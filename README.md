@@ -1,15 +1,20 @@
-Setup:
+# Setup:
 
-(Optional) setup a python virtual environment and activate it
-$ python3 -m venv venv/
-$ source venv/bin/activate
+### (Optional) setup a python virtual environment and activate it
 
-Install requirements
-$ bash ./install_reqs.sh
+```$ python3 -m venv venv/```
 
-Run the train loop
-$ python3 ./train.py
+```$ source venv/bin/activate```
 
-Run the train loop with pdb debugger
-$ python3 -m pdb ./train.py
+### Install requirements
+
+```$ bash ./install_reqs.sh```
+
+### Run the train loop
+
+```$ python3 ./train.py```
+
+### Run the train loop with debugger
+
+```$ python3 -m pdb ./train.py```
 (then type "c" to start the program)
