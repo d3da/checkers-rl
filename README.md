@@ -5,6 +5,7 @@
 ```$ python3 -m venv venv/```
 
 ```$ source venv/bin/activate```
+(you will need to activate it every time you want to run the program)
 
 ### Install requirements
 
