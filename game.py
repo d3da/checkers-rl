@@ -29,10 +29,6 @@ class Game:
     VARIANT = 'standard'
 
     BOARD_SIZE = 50
-    """
-    TODO: Include information about jump-moves in the state
-    when the player is currently in a jump chain
-    """
 
     NUM_ACTIONS = BOARD_SIZE ** 2
     """
@@ -57,6 +53,12 @@ class Game:
     def get_state(self) -> GameState:
         """
         Return the game's state in a format that is usable by the NN as input.
+
+        TODO:
+            - Include information about jump-moves in the state
+                when the player is currently in a jump chain
+            - Inlude information about which pieces are kings
+            - Maybe even game history (so draw by repetition can be takes into account)
         """
         def index_to_player(i: int, board: Board) -> Player:
             piece = board._game.board.searcher.position_pieces.get(i)
