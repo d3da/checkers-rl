@@ -70,7 +70,7 @@ class Game:
                 return Player.WHITE
             raise Exception
 
-        return np.array([index_to_player(i, self.board).value for i in range(1,33)])
+        return np.array([index_to_player(i, self.board).value for i in range(1, self.BOARD_SIZE + 1)])
 
     def get_legal_actions(self) -> list[Action]:
         """
