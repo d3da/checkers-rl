@@ -26,16 +26,18 @@ class Game:
     to be used during self-play.
     """
 
-    NUM_ACTIONS = 32 * 32
-    """
-    The first 32 selects the "from" square, the last 32 selects the "to" square
-    So the most commong opening move 11-15 is represented as the number 11*32+15
-    """
+    VARIANT = 'standard'
 
-    STATE_SIZE = 32
+    BOARD_SIZE = 50
     """
     TODO: Include information about jump-moves in the state
     when the player is currently in a jump chain
+    """
+
+    NUM_ACTIONS = BOARD_SIZE ** 2
+    """
+    The first 32 selects the "from" square, the last 32 selects the "to" square
+    So the most commong opening move 11-15 is represented as the number 11*32+15
     """
 
     def __init__(self) -> None:
@@ -48,7 +50,7 @@ class Game:
         """
         Reset the board to its initial position.
         """
-        self.board = Board(variant='english')
+        self.board = Board(variant=self.VARIANT)
         self.move_cache: list[list[int]] = []
         self.current_jump: list[int] = []
 
@@ -79,15 +81,15 @@ class Game:
 
     def _action_to_steps_move(self, action: Action) -> list[int]:
         """Convert a model output action index to something usable by pydraughts"""
-        to_pos = action % 32
-        from_pos = int((action - to_pos) / 32)
+        to_pos = action % self.BOARD_SIZE
+        from_pos = int((action - to_pos) / self.BOARD_SIZE)
         to_pos += 1
         from_pos += 1
         return [from_pos, to_pos]
 
     def _steps_move_to_action(self, steps_move: list[int]) -> Action:
         """Convert a pydraughts move to something usable by the model"""
-        return (steps_move[0] - 1) * 32 + steps_move[1] - 1
+        return (steps_move[0] - 1) * self.BOARD_SIZE + steps_move[1] - 1
 
     def play(self, action: Action) -> None:
         """
