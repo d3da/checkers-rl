@@ -5,7 +5,7 @@ import draughts
 
 GameState = np.ndarray
 """
-A GameState should be an 8x8 array filled with Player.WHITE and Player.BLACK for the pieces
+A GameState should be an 10x10 array filled with Player.WHITE and Player.BLACK for the pieces
 and Player.NEUTRAL for empty spaces.
 """
 
