@@ -32,9 +32,11 @@ class Game:
 
     NUM_ACTIONS = BOARD_SIZE ** 2
     """
-    The first 32 selects the "from" square, the last 32 selects the "to" square
-    So the most commong opening move 11-15 is represented as the number 11*32+15
+    The first 50 selects the "from" square, the last 50 selects the "to" square
+    So the move 11-15 is represented as the number 11*50+15
     """
+
+    GAMESTATE_SIZE = BOARD_SIZE * 2
 
     def __init__(self) -> None:
         """
@@ -57,11 +59,9 @@ class Game:
         TODO:
             - Include information about jump-moves in the state
                 when the player is currently in a jump chain
-            - Inlude information about which pieces are kings
             - Maybe even game history (so draw by repetition can be takes into account)
         """
-        def index_to_player(i: int, board: Board) -> Player:
-            piece = board._game.board.searcher.position_pieces.get(i)
+        def piece_player(piece) -> Player:
             if piece is None:
                 return Player.NEUTRAL
             elif piece.player == 1:
@@ -70,7 +70,17 @@ class Game:
                 return Player.WHITE
             raise Exception
 
-        return np.array([index_to_player(i, self.board).value for i in range(1, self.BOARD_SIZE + 1)])
+        def is_king(piece) -> int:
+            """1 for white king, -1 for black king, 0 otherwise"""
+            if piece is None or not piece.king:
+                return 0
+            return piece_player(piece).value
+
+        pieces = [self.board._game.board.searcher.position_pieces.get(i) \
+                    for i in range(1, self.BOARD_SIZE + 1)]
+        piece_colors = np.array([piece_player(piece).value for piece in pieces])
+        piece_kings = np.array([is_king(piece) for piece in pieces])
+        return np.concatenate([piece_colors, piece_kings])
 
     def get_legal_actions(self) -> list[Action]:
         """
