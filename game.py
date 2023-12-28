@@ -52,6 +52,10 @@ class Game:
         self.move_cache: list[list[int]] = []
         self.current_jump: list[int] = []
 
+        self._move_cache_history: list[list[list[int]]] = []
+        self._current_jump_history: list[list[int]] = []
+        self._move_was_jump_chain_segment_history: list[bool] = []
+
     def get_state(self) -> GameState:
         """
         Return the game's state in a format that is usable by the NN as input.
@@ -108,6 +112,12 @@ class Game:
         Play a certain action on the board.
         Assumes that the action is legal, so ensure this first!
         """
+        if action not in self.get_legal_actions():
+            raise Exception
+
+        self._current_jump_history.append(self.current_jump[:])
+        self._move_cache_history.append(self.move_cache[:])
+
         steps_move = self._action_to_steps_move(action)
         if steps_move not in self.move_cache:
             # Move is part of a jump chain
@@ -118,8 +128,10 @@ class Game:
 
             self.move_cache = new_move_cache
             self.current_jump.append(steps_move[0])
+            self._move_was_jump_chain_segment_history.append(True)
             return
 
+        self._move_was_jump_chain_segment_history.append(False)
         steps_move = self.current_jump + steps_move
 
         move = Move(self.board, steps_move=steps_move)
@@ -127,6 +139,16 @@ class Game:
 
         self.current_jump = []
         self.move_cache = []
+
+    def undo(self) -> None:
+        """
+        Undo the last move taken with game.play().
+        """
+        if not self._move_was_jump_chain_segment_history.pop():
+            self.board.pop()
+
+        self.current_jump = self._current_jump_history.pop()
+        self.move_cache = self._move_cache_history.pop()
 
     def has_ended(self) -> bool:
         """
