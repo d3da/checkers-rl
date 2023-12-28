@@ -51,6 +51,7 @@ class Game:
         self.board = Board(variant=self.VARIANT)
         self.move_cache: list[list[int]] = []
         self.current_jump: list[int] = []
+        self.current_jump_end_pos: int | None = None
 
         self._move_cache_history: list[list[list[int]]] = []
         self._current_jump_history: list[list[int]] = []
@@ -59,11 +60,11 @@ class Game:
     def get_state(self) -> GameState:
         """
         Return the game's state in a format that is usable by the NN as input.
+        When the player is currently within an incomplete jump chain, we manually update the
+        gamestate to reflect the position within the jump chain.
 
         TODO:
-            - Include information about jump-moves in the state
-                when the player is currently in a jump chain
-            - Maybe even game history (so draw by repetition can be takes into account)
+            - Add something related to game history (so draw by repetition can be takes into account)
         """
         def piece_player(piece) -> Player:
             if piece is None:
@@ -84,7 +85,76 @@ class Game:
                     for i in range(1, self.BOARD_SIZE + 1)]
         piece_colors = np.array([piece_player(piece).value for piece in pieces])
         piece_kings = np.array([is_king(piece) for piece in pieces])
-        return np.concatenate([piece_colors, piece_kings])
+        return self._add_jump_chain_to_state(np.concatenate([piece_colors, piece_kings]))
+
+    def _add_jump_chain_to_state(self, game_state: GameState) -> GameState:
+        """
+        Check if game is inside an incomplete jump chain and manually update the gamestate,
+        moving a piece along the jump chain squares and capturing pieces it jumps over.
+        """
+        if len(self.current_jump) == 0:
+            assert self.current_jump_end_pos is None
+            return game_state
+
+        assert self.current_jump_end_pos is not None
+        full_jump_chain: list[int] = self.current_jump + [self.current_jump_end_pos]
+        while len(full_jump_chain) > 1:
+            from_pos, to_pos, *_ = full_jump_chain
+            full_jump_chain.pop(0)
+
+            captured_pos = self._get_captured_piece_square(from_pos, to_pos, game_state)
+            jumping_piece = game_state[from_pos - 1]
+            jumping_king = game_state[from_pos - 1 + self.BOARD_SIZE]
+            assert game_state[captured_pos - 1] != 0
+            assert game_state[captured_pos - 1] == -jumping_piece
+
+            # Set the departure square to empty
+            game_state[from_pos - 1] = Player.NEUTRAL.value
+            game_state[from_pos - 1 + self.BOARD_SIZE] = Player.NEUTRAL.value
+            # Set the arrival square to the piece
+            game_state[to_pos - 1] = jumping_piece
+            game_state[to_pos - 1 + self.BOARD_SIZE] = jumping_king
+            # Capture the piece in the middle
+            game_state[captured_pos - 1] = Player.NEUTRAL.value
+            game_state[captured_pos - 1 + self.BOARD_SIZE] = Player.NEUTRAL.value
+
+        return game_state
+
+    @staticmethod
+    def _get_captured_piece_square(from_pos, to_pos, game_state: GameState) -> int:
+        """
+        Given the squares that a piece jumps from and to, return the square that is captured.
+        This function only works when Game.BOARD_SIZE is 50.
+
+        This function is a monstrosity, maybe it's best not to try to understand this or touch it,
+        and rewrite it or temporarily disable it if it causes problems....
+        """
+        if Game.BOARD_SIZE != 50:
+            print('WARNING: game state logic currently only works for Game.BOARD_SIZE == 50.')
+
+        diff = to_pos - from_pos
+        low_from_pos = from_pos % 10 in [1,2,3,4,5]
+        direction_down = diff > 0
+        if direction_down:
+            direction_right = diff % 11 in [0, 6 if low_from_pos else 5]
+            if direction_right:
+                steps = [6,5] if low_from_pos else [5,6]
+            else:
+                steps = [5,4] if low_from_pos else [4,5]
+        else:
+            direction_left = (-diff) % 11 in [0, 5 if low_from_pos else 6]
+            if direction_left:
+                steps = [-5,-6] if low_from_pos else [-6,-5]
+            else:
+                steps = [-4,-5] if low_from_pos else [-5,-4]
+        # Find the square of the first piece along the move diagonal
+        search_pos = from_pos
+        while True:
+            step = steps[0]
+            steps.reverse()
+            search_pos += step
+            if game_state[search_pos - 1] != 0:
+                return search_pos
 
     def get_legal_actions(self) -> list[Action]:
         """
@@ -128,6 +198,7 @@ class Game:
 
             self.move_cache = new_move_cache
             self.current_jump.append(steps_move[0])
+            self.current_jump_end_pos = steps_move[1]
             self._move_was_jump_chain_segment_history.append(True)
             return
 
@@ -138,6 +209,7 @@ class Game:
         self.board.push(move)
 
         self.current_jump = []
+        self.current_jump_end_pos = None
         self.move_cache = []
 
     def undo(self) -> None:
