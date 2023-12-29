@@ -53,6 +53,20 @@ class GameState:
         kings_repr = self.kings.astype(int) * self.piece_colors
         return np.concatenate([self.piece_colors, kings_repr])
 
+    def __iter__(self):
+        """
+        Return an iterator that iterates through squares on the board
+        and returns BOARD_SIZE tuples of (square_number, piece_color, is_king).
+        """
+        self._idx = 0
+        return self
+
+    def __next__(self) -> tuple[int, Player, bool]:
+        self._idx += 1
+        if self._idx > BOARD_SIZE:
+            raise StopIteration
+        return self._idx, *self._get_square(self._idx)
+
     def __str__(self) -> str:
         return str(self.piece_colors) + os.linesep + str(self.kings)
 
