@@ -125,36 +125,38 @@ class Game:
         """
         Given the squares that a piece jumps from and to, return the square that is captured.
         This function only works when Game.BOARD_SIZE is 50.
-
-        This function is a monstrosity, maybe it's best not to try to understand this or touch it,
-        and rewrite it or temporarily disable it if it causes problems....
         """
         if Game.BOARD_SIZE != 50:
             print('WARNING: game state logic currently only works for Game.BOARD_SIZE == 50.')
+            raise NotImplementedError
 
-        diff = to_pos - from_pos
-        low_from_pos = from_pos % 10 in [1,2,3,4,5]
+        def convert_square(square):
+            """
+            Convert squares from a system where only the black squares are counted
+            (normal checkers notation) to counting both black and white squares,
+            since this representation has nicer properties we can use.
+            Namely, a step to the bottom-right / top-left always does +/- 11,
+                and a step to the top-right / bottom-left always does +/- 9.
+            """
+            return 2 * square if square % 10 in [1,2,3,4,5] else 2 * square - 1
+
+        def convert_back(square):
+            """Convert back to standard form"""
+            return square // 2 if square % 2 == 0 else (square + 1) // 2
+
+        diff = convert_square(to_pos) - convert_square(from_pos)
         direction_down = diff > 0
-        if direction_down:
-            direction_right = diff % 11 in [0, 6 if low_from_pos else 5]
-            if direction_right:
-                steps = [6,5] if low_from_pos else [5,6]
-            else:
-                steps = [5,4] if low_from_pos else [4,5]
-        else:
-            direction_left = (-diff) % 11 in [0, 5 if low_from_pos else 6]
-            if direction_left:
-                steps = [-5,-6] if low_from_pos else [-6,-5]
-            else:
-                steps = [-4,-5] if low_from_pos else [-5,-4]
+        sign = 1 if direction_down else -1
+        sw_ne_movement = (sign * diff) % 11 == 0
+        assert sw_ne_movement or (sign * diff) % 9 == 0
+        step = sign * (11 if sw_ne_movement else 9)
+
         # Find the square of the first piece along the move diagonal
-        search_pos = from_pos
+        search_pos = convert_square(from_pos)
         while True:
-            step = steps[0]
-            steps.reverse()
             search_pos += step
-            if game_state[search_pos - 1] != 0:
-                return search_pos
+            if game_state[convert_back(search_pos) - 1] != Player.NEUTRAL.value:
+                return convert_back(search_pos)
 
     def get_legal_actions(self) -> list[Action]:
         """
