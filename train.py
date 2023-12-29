@@ -341,7 +341,7 @@ def evaluate_model_vs_random(model: torch.nn.Module, epsilon: float, num_games: 
     return win_rate, draw_rate
 
 if __name__ == '__main__':
-    model = CheckersQModel(num_hidden_layers=0, hidden_size=512, output_size=NUM_ACTIONS)
+    model = CheckersQModel(num_hidden_layers=0, hidden_size=512)
     train_hist = train_loop(model)
 
     df = pd.DataFrame(train_hist)
