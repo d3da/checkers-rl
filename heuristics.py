@@ -4,7 +4,7 @@ from draughts import Board, Move
 import draughts
 import random
 
-from game import Game, GameState, Player, Action
+from game import Game, GameState, Player, Action, BOARD_SIZE
 
 def get_count(game: Game, player: Player) -> int:
     """
@@ -15,7 +15,7 @@ def get_count(game: Game, player: Player) -> int:
     else:
         player = draughts.BLACK
     count = 0
-    for i in range(1, game.BOARD_SIZE + 1):
+    for i in range(1, BOARD_SIZE + 1):
         piece = game.board._game.board.searcher.position_pieces.get(i)
         if piece is None:
             count = count
@@ -32,7 +32,7 @@ def kings_count(game: Game, player: Player) -> int:
     else:
         player = draughts.BLACK
     count = 0
-    for i in range(1, game.BOARD_SIZE + 1):
+    for i in range(1, BOARD_SIZE + 1):
         piece = game.board._game.board.searcher.position_pieces.get(i)
         if piece is None:
             count = count

@@ -12,7 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from model import CheckersQModel
-from game import Game, GameState, Player, Action
+from game import Game, GameState, Player, Action, NUM_ACTIONS
 
 
 @torch.no_grad()
@@ -60,7 +60,7 @@ def select_action(model: torch.nn.Module,
     if random.random() < epsilon:
         return select_random_action(legal_actions)
 
-    action_values = model(torch.tensor(state, dtype=torch.float32))
+    action_values = model(torch.tensor(state.to_array(), dtype=torch.float32))
 
     # Mask unavailable moves (by setting the values to NaN)
     action_mask = np.full_like(action_values, fill_value=np.nan)
@@ -156,11 +156,11 @@ def make_batch(samples: list[Sample]) -> tuple[torch.Tensor, torch.Tensor, torch
     """
     Turn a batch from the replay buffer into something usable by pytorch modules
     """
-    states: list[GameState] = []
+    states: list[np.ndarray] = []
     actions: list[Action] = []
     winners: list[Literal[-1, 0, 1]] = []
     for sample in samples:
-        states.append(sample.game_state)
+        states.append(sample.game_state.to_array())
         actions.append(sample.action)
         winners.append(sample.winner.value)
 
@@ -274,7 +274,7 @@ def train_loop(model: torch.nn.Module):
 
             states, actions, winners = make_batch(replay_buffer.sample_k(batch_size))
             predictions = model(states)  # (batch, num_actions)
-            action_mask = torch.nn.functional.one_hot(actions, num_classes=Game.NUM_ACTIONS)
+            action_mask = torch.nn.functional.one_hot(actions, num_classes=NUM_ACTIONS)
             
             action_mask = action_mask.type(torch.float32)  # (batch, num_actions)
             predictions = predictions * action_mask
@@ -341,7 +341,7 @@ def evaluate_model_vs_random(model: torch.nn.Module, epsilon: float, num_games: 
     return win_rate, draw_rate
 
 if __name__ == '__main__':
-    model = CheckersQModel(num_hidden_layers=0, hidden_size=512, output_size=Game.NUM_ACTIONS)
+    model = CheckersQModel(num_hidden_layers=0, hidden_size=512, output_size=NUM_ACTIONS)
     train_hist = train_loop(model)
 
     df = pd.DataFrame(train_hist)

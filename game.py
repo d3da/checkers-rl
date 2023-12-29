@@ -1,13 +1,8 @@
+import os
 import numpy as np
 from enum import Enum
 from draughts import Board, Move
 import draughts
-
-GameState = np.ndarray
-"""
-A GameState should be an 10x10 array filled with Player.WHITE and Player.BLACK for the pieces
-and Player.NEUTRAL for empty spaces.
-"""
 
 Action = int
 """
@@ -19,24 +14,55 @@ class Player(Enum):
     NEUTRAL = 0
     BLACK = -1
 
+
+BOARD_SIZE = 50
+
+VARIANT = 'standard'
+
+NUM_ACTIONS = BOARD_SIZE ** 2
+"""
+The first 50 selects the "from" square, the last 50 selects the "to" square
+So the move 11-15 is represented as the number 11*50+15
+"""
+
+GAMESTATE_SIZE = BOARD_SIZE * 2
+
+class GameState:
+    """
+    TODO:
+     - include the legal actions and current player in the gamestate class?
+     - include the number of current repetitions? To avoid draw by repetition?
+    """
+
+    def __init__(self) -> None:
+        self.piece_colors = np.full((BOARD_SIZE), Player.NEUTRAL.value)
+        self.kings        = np.full((BOARD_SIZE), False)
+
+    def _update_square(self, sq: int, player: Player, king: bool) -> None:
+        self.piece_colors[sq - 1] = player.value
+        self.kings[sq - 1] = king
+
+    def _get_square(self, sq: int) -> tuple[Player, bool]:
+        return Player(self.piece_colors[sq - 1]), self.kings[sq - 1]
+
+    def to_array(self) -> np.ndarray:
+        """
+        Return an array of shape (GAMESTATE_SIZE,) containing the board position,
+        to be used as input for a neural network.
+        """
+        kings_repr = self.kings.astype(int) * self.piece_colors
+        return np.concatenate([self.piece_colors, kings_repr])
+
+    def __str__(self) -> str:
+        return str(self.piece_colors) + os.linesep + str(self.kings)
+
+
 class Game:
     """
     Class to handle the logic for playing a game of checkers,
     and returning info about the game state and available moves
     to be used during self-play.
     """
-
-    VARIANT = 'standard'
-
-    BOARD_SIZE = 50
-
-    NUM_ACTIONS = BOARD_SIZE ** 2
-    """
-    The first 50 selects the "from" square, the last 50 selects the "to" square
-    So the move 11-15 is represented as the number 11*50+15
-    """
-
-    GAMESTATE_SIZE = BOARD_SIZE * 2
 
     def __init__(self) -> None:
         """
@@ -48,7 +74,7 @@ class Game:
         """
         Reset the board to its initial position.
         """
-        self.board = Board(variant=self.VARIANT)
+        self.board = Board(variant=VARIANT)
         self.move_cache: list[list[int]] = []
         self.current_jump: list[int] = []
         self.current_jump_end_pos: int | None = None
@@ -62,9 +88,6 @@ class Game:
         Return the game's state in a format that is usable by the NN as input.
         When the player is currently within an incomplete jump chain, we manually update the
         gamestate to reflect the position within the jump chain.
-
-        TODO:
-            - Add something related to game history (so draw by repetition can be takes into account)
         """
         def piece_player(piece) -> Player:
             if piece is None:
@@ -75,17 +98,13 @@ class Game:
                 return Player.WHITE
             raise Exception
 
-        def is_king(piece) -> int:
-            """1 for white king, -1 for black king, 0 otherwise"""
-            if piece is None or not piece.king:
-                return 0
-            return piece_player(piece).value
+        game_state = GameState()
+        for i in range(1, BOARD_SIZE + 1):
+            piece = self.board._game.board.searcher.position_pieces.get(i)
+            king = False if piece is None else piece.king
+            game_state._update_square(i, piece_player(piece), king)
 
-        pieces = [self.board._game.board.searcher.position_pieces.get(i) \
-                    for i in range(1, self.BOARD_SIZE + 1)]
-        piece_colors = np.array([piece_player(piece).value for piece in pieces])
-        piece_kings = np.array([is_king(piece) for piece in pieces])
-        return self._add_jump_chain_to_state(np.concatenate([piece_colors, piece_kings]))
+        return self._add_jump_chain_to_state(game_state)
 
     def _add_jump_chain_to_state(self, game_state: GameState) -> GameState:
         """
@@ -102,21 +121,17 @@ class Game:
             from_pos, to_pos, *_ = full_jump_chain
             full_jump_chain.pop(0)
 
+            jumping_piece, jumping_king = game_state._get_square(from_pos)
             captured_pos = self._get_captured_piece_square(from_pos, to_pos, game_state)
-            jumping_piece = game_state[from_pos - 1]
-            jumping_king = game_state[from_pos - 1 + self.BOARD_SIZE]
-            assert game_state[captured_pos - 1] != 0
-            assert game_state[captured_pos - 1] == -jumping_piece
+            assert game_state._get_square(captured_pos)[0] != Player.NEUTRAL
+            assert game_state._get_square(captured_pos)[0].value == -jumping_piece.value
 
             # Set the departure square to empty
-            game_state[from_pos - 1] = Player.NEUTRAL.value
-            game_state[from_pos - 1 + self.BOARD_SIZE] = Player.NEUTRAL.value
+            game_state._update_square(from_pos, Player.NEUTRAL, False)
             # Set the arrival square to the piece
-            game_state[to_pos - 1] = jumping_piece
-            game_state[to_pos - 1 + self.BOARD_SIZE] = jumping_king
+            game_state._update_square(to_pos, jumping_piece, jumping_king)
             # Capture the piece in the middle
-            game_state[captured_pos - 1] = Player.NEUTRAL.value
-            game_state[captured_pos - 1 + self.BOARD_SIZE] = Player.NEUTRAL.value
+            game_state._update_square(captured_pos, Player.NEUTRAL, False)
 
         return game_state
 
@@ -124,10 +139,10 @@ class Game:
     def _get_captured_piece_square(from_pos, to_pos, game_state: GameState) -> int:
         """
         Given the squares that a piece jumps from and to, return the square that is captured.
-        This function only works when Game.BOARD_SIZE is 50.
+        This function only works when BOARD_SIZE is 50.
         """
-        if Game.BOARD_SIZE != 50:
-            print('WARNING: game state logic currently only works for Game.BOARD_SIZE == 50.')
+        if BOARD_SIZE != 50:
+            print('WARNING: game state logic currently only works for BOARD_SIZE == 50.')
             raise NotImplementedError
 
         def convert_square(square):
@@ -155,8 +170,9 @@ class Game:
         search_pos = convert_square(from_pos)
         while True:
             search_pos += step
-            if game_state[convert_back(search_pos) - 1] != Player.NEUTRAL.value:
-                return convert_back(search_pos)
+            search_square = convert_back(search_pos)
+            if game_state._get_square(search_square)[0] != Player.NEUTRAL:
+                return search_square
 
     def get_legal_actions(self) -> list[Action]:
         """
@@ -169,15 +185,15 @@ class Game:
 
     def _action_to_steps_move(self, action: Action) -> list[int]:
         """Convert a model output action index to something usable by pydraughts"""
-        to_pos = action % self.BOARD_SIZE
-        from_pos = int((action - to_pos) / self.BOARD_SIZE)
+        to_pos = action % BOARD_SIZE
+        from_pos = int((action - to_pos) / BOARD_SIZE)
         to_pos += 1
         from_pos += 1
         return [from_pos, to_pos]
 
     def _steps_move_to_action(self, steps_move: list[int]) -> Action:
         """Convert a pydraughts move to something usable by the model"""
-        return (steps_move[0] - 1) * self.BOARD_SIZE + steps_move[1] - 1
+        return (steps_move[0] - 1) * BOARD_SIZE + steps_move[1] - 1
 
     def play(self, action: Action) -> None:
         """

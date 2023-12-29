@@ -1,5 +1,5 @@
 import torch
-from game import Game
+from game import GAMESTATE_SIZE
 
 class CheckersQModel(torch.nn.Module):
 
@@ -7,7 +7,7 @@ class CheckersQModel(torch.nn.Module):
         super().__init__()
         self.layers = torch.nn.Sequential()
 
-        self.layers.append(torch.nn.Linear(in_features=Game.GAMESTATE_SIZE, out_features=hidden_size))
+        self.layers.append(torch.nn.Linear(in_features=GAMESTATE_SIZE, out_features=hidden_size))
         self.layers.append(torch.nn.ReLU())
 
         for _ in range(num_hidden_layers):
