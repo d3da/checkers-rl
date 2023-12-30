@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import random
+import heuristics
 from game import Action, Player, Game
 from model import CheckersQModel, CheckersVModel
 
@@ -189,4 +190,13 @@ class UserInputAgent(BaseAgent):
             break
         return action
 
+
+class PieceCountHeuristicsAgent(BaseTreeSearchAgent):
+    """
+    Select an action using tree search with the piece_count function
+    as a heuristic.
+    """
+
+    def _heuristic(self, game: Game) -> float:
+        return heuristics.piece_count(game)
 
