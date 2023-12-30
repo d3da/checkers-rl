@@ -52,34 +52,6 @@ def piece_count(game: Game, king_multiplier: int = 3) -> int:
     return (white - white_kings + king_multiplier * white_kings) - \
             (black - black_kings + king_multiplier * black_kings)
 
-def select_piece_count_action(game: Game):
-    """
-    Plays the legal actions, evaluates them according to the piece count function and returns the best action for the current player
-    """     
-
-    scores = []
-    actions = game.get_legal_actions()
-    player = game.get_current_player()
-
-    for action in actions :
-
-        game.play(action)
-        i = piece_count(game)
-        scores.append(i)
-
-        game.undo()
-
-    if player == Player.WHITE:
-        best_score = max(scores)
-    else:
-        best_score = min(scores)
-
-    indices = [index for index, value in enumerate(scores) if value == best_score]
-    pc = random.choice(indices)
-
-    pc_action = actions[pc]
-
-    return pc_action
 
 if __name__ == '__main__':
     from train import play_agent_game
