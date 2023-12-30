@@ -151,12 +151,30 @@ class BaseTreeSearchAgent(BaseAgent, ABC):
         raise NotImplementedError
 
 
-class VModelAgent(BaseTreeSearchAgent):
+class BaseEpsilonTreeSearchAgent(BaseEpsilonAgent, BaseTreeSearchAgent, ABC):
+    """
+    An agent that picks a random move with chance epsilon (see BaseEpsilonAgent)
+    and otherwise performs tree search (see BaseTreeSearchAgent) using the
+    _heuristic function implemented by a subclass.
+    """
+
+    def __init__(self, *required_kwarg_names: str) -> None:
+        super().__init__(*required_kwarg_names)
+        assert 'epsilon' in self.required_kwarg_names
+
+    def _select_action(self, game: Game, **kwargs) -> Action:
+        return super()._select_action(game, **kwargs)
+
+    def _select_nonepsilon_action(self, game: Game, **kwargs) -> Action:
+        # This calls the BaseTreeSearchAgent's _select_action
+        # (since it comes after BaseEpsilonAgent in self.__class__.__mro__)
+        return super(BaseEpsilonAgent)._select_action(game, **kwargs)
+
+
+class VModelAgent(BaseEpsilonTreeSearchAgent):
     """
     Use a neural network that estimates the state-value function as a heuristic,
     and perform tree search using this heuristic.
-
-    TODO make this inherit from BaseEpsilonAgent as well
     """
 
     def __init__(self, model: CheckersVModel):
