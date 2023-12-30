@@ -1,10 +1,7 @@
-import numpy as np
-from enum import Enum
-from draughts import Board, Move
 import draughts
 import random
 
-from game import Game, GameState, Player, Action, BOARD_SIZE
+from game import Game, Player, BOARD_SIZE
 
 def get_count(game: Game, player: Player) -> int:
     """
@@ -85,9 +82,11 @@ def select_piece_count_action(game: Game):
     return pc_action
 
 if __name__ == '__main__':
+    from train import play_agent_game
+    from agent import PieceCountHeuristicsAgent, UserInputAgent
 
     game = Game()
-    action = select_piece_count_action(game)
-    game.play(action)
+    play_agent_game(game, UserInputAgent(), PieceCountHeuristicsAgent())
     print(game)
+    print(f'Winner: {game.get_winner()}')
         
