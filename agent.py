@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import torch
 import numpy as np
 import random
@@ -5,7 +6,7 @@ import heuristics
 from game import Action, Player, Game
 from model import CheckersQModel, CheckersVModel
 
-class BaseAgent:
+class BaseAgent(ABC):
     """
     Base class that defines an agent. All different agents inherit from this one.
     An agent selects an Action given a Game, by calling the select_action function.
@@ -38,6 +39,7 @@ class BaseAgent:
         self._check_kwargs(**kwargs)
         return self._select_action(game, **kwargs)
 
+    @abstractmethod
     def _select_action(self,
                        game: Game,
                        **kwargs) -> Action:
@@ -47,7 +49,7 @@ class BaseAgent:
         raise NotImplementedError
 
 
-class BaseEpsilonAgent(BaseAgent):
+class BaseEpsilonAgent(BaseAgent, ABC):
     """
     Base class for defining an epsilon-greedy strategy.
     That is, a random action is chosen with chance epsilon,
@@ -66,6 +68,7 @@ class BaseEpsilonAgent(BaseAgent):
             return random.choice(game.get_legal_actions())
         return self._select_nonepsilon_action(game, **kwargs)
 
+    @abstractmethod
     def _select_nonepsilon_action(self,
                                   game: Game,
                                   **kwargs) -> Action:
@@ -117,14 +120,11 @@ class QModelAgent(BaseEpsilonAgent):
         return best_action
 
 
-class BaseTreeSearchAgent(BaseAgent):
+class BaseTreeSearchAgent(BaseAgent, ABC):
     """
     Agent that performs tree search (a single step for now)
     and picks a move that maximizes/minimizes a certain heuristic function.
     """
-
-    def __init__(self):
-        super().__init__()
 
     def _select_action(self,
                        game: Game,
@@ -141,6 +141,7 @@ class BaseTreeSearchAgent(BaseAgent):
         action_idx = random.choice([index for index, value in enumerate(scores) if value == best_score])
         return legal_actions[action_idx]
 
+    @abstractmethod
     def _heuristic(self, game: Game) -> float:
         """
         To be overridden by subclasses.
