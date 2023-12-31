@@ -59,23 +59,6 @@ class ReplayBuffer:
         return len(self.buffer)
 
 
-def make_batch(samples: list[Sample]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    Turn a batch from the replay buffer into something usable by pytorch modules
-    """
-    states: list[np.ndarray] = []
-    actions: list[Action] = []
-    winners: list[Literal[-1, 0, 1]] = []
-    for sample in samples:
-        states.append(sample.game_state.to_array())
-        actions.append(sample.action)
-        winners.append(sample.winner.value)
-
-    return torch.tensor(np.array(states, dtype=np.float32)), \
-            torch.tensor(np.array(actions, dtype=np.int64)), \
-            torch.tensor(np.array(winners))
-
-
 class SmoothedAverage:
     """
     Class implementing an exponential moving average (EMA)
@@ -108,133 +91,181 @@ class SmoothedAverage:
         return self._last_value
 
 
-def fill_replay_buffer_random_moves(replay_buffer: ReplayBuffer,
-                                    game: Game,
-                                    agent: BaseAgent,
-                                    agent_kwargs: dict[str, Any] | None = None,
-                                    num_samples: int | None = None) -> int:
-    """
-    Fill the given replay buffer with num_samples samples,
-    or fill it completely if num_samples is None
-    """
-    agent_kwargs = agent_kwargs or {}
-    def is_done():
-        if num_samples is None:
-            return replay_buffer.is_full
-        return len(replay_buffer) >= num_samples
+class QModelTrainRun:
+    def __init__(self,
+                 model: CheckersQModel,
+                 optimizer: torch.optim.Optimizer) -> None:
+        self.model = model
+        self.loss_fn = torch.nn.MSELoss(reduction='sum')
+        self.optimizer = optimizer
 
-    progress_bar = tqdm.tqdm(total=num_samples or replay_buffer.capacity,
-                             dynamic_ncols=True,
-                             desc='Filling replay buffer')
-    games_played = 0
-    while not is_done():
-        games_played += 1
-        _, winner, game_history = play_agent_game(game, agent, agent, agent_kwargs, agent_kwargs)
-        replay_buffer.append(game_history, winner)
-        progress_bar.update(len(game_history))
-        progress_bar.set_postfix(dict(games=games_played))
+        self.model_agent = QModelAgent(self.model)
+        self.random_agent = RandomAgent()
+        self.game = Game()
 
-    return games_played
+        self.total_selfplay_games = 0
 
+    def train(self,
+              replay_buffer_capacity: int = 100_000,
+              initial_experience_samples: int | None = 10_000,
+              num_train_iterations: int = 100,
+              selfplay_games_p_i: int = 10,
+              train_batches_p_i: int = 100,
+              batch_size: int = 128,
+              epsilon_anneal_iters: int = 60,
+              min_epsilon: float = 0.2,
+              disable_progress: bool = False) -> pd.DataFrame:
 
-def train_loop(model: CheckersQModel):
-    # Generate games into replay buffer
-    buffer_size = 100_000
-    buffer_initial_samples: int | None = 10_000
+        self.replay_buffer = ReplayBuffer(replay_buffer_capacity)
+        self._fill_replay_buffer_random_moves(initial_experience_samples, disable_progress=disable_progress)
 
-    game = Game()
-    rl_agent = QModelAgent(model)
-    random_agent = RandomAgent()
+        train_history = self._train_loop(num_train_iterations,
+                                         selfplay_games_p_i, train_batches_p_i,
+                                         batch_size,
+                                         epsilon_anneal_iters, min_epsilon,
+                                         disable_progress=disable_progress)
+        return pd.DataFrame(train_history)
 
-    replay_buffer = ReplayBuffer(buffer_size)
-    selfplay_games = fill_replay_buffer_random_moves(replay_buffer,
-                                                     game,
-                                                     random_agent,
-                                                     num_samples=buffer_initial_samples)
+    def _fill_replay_buffer_random_moves(self,
+                                         num_samples: int | None,
+                                         disable_progress: bool) -> None:
+        """
+        Fill the given replay buffer with num_samples samples,
+        or fill it completely if num_samples is None
 
-    loss_fn = torch.nn.MSELoss(reduction='sum')
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, weight_decay=5.0)
+        Games are played by random agents.
+        Returns the number of games played.
+        """
+        def is_done():
+            if num_samples is None:
+                return self.replay_buffer.is_full
+            return len(self.replay_buffer) >= num_samples
 
-    loss_ema = SmoothedAverage(initial=1.)
-    winrate_ema = SmoothedAverage(alpha=0.1)
-    loserate_ema = SmoothedAverage(alpha=0.1)
-    drawrate_ema = SmoothedAverage(alpha=0.1)
+        progress_bar = tqdm.tqdm(total=num_samples or self.replay_buffer.capacity,
+                                 dynamic_ncols=True,
+                                 desc='Filling replay buffer',
+                                 disable=disable_progress)
+        while not is_done():
+            _, winner, game_history = play_agent_game(self.game, self.random_agent, self.random_agent)
+            self.replay_buffer.append(game_history, winner)
+            self.total_selfplay_games += 1
+            progress_bar.update(len(game_history))
+            progress_bar.set_postfix(dict(games=self.total_selfplay_games))
 
-    num_iterations = 100
-    epsilon_anneal_range = 100
-    min_epsilon = 0.2
+    def _make_batch(self, samples: list[Sample]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Turn a batch from the replay buffer into something usable by pytorch modules
+        """
+        states: list[np.ndarray] = []
+        actions: list[Action] = []
+        winners: list[Literal[-1, 0, 1]] = []
+        for sample in samples:
+            states.append(sample.game_state.to_array())
+            actions.append(sample.action)
+            winners.append(sample.winner.value)
 
-    self_play_games_per_iter = 25
-    batches_per_iter = 100
-    batch_size = 128
+        return torch.tensor(np.array(states, dtype=np.float32)), \
+                torch.tensor(np.array(actions, dtype=np.int64)), \
+                torch.tensor(np.array(winners))
 
-    validation_epsilon = 0.05
-    random_validation_games = 10
-
-    train_history = []
-    progress_bar = tqdm.trange(num_iterations, dynamic_ncols=True, colour='#22ee22')
-    for iteration in progress_bar:
+    def _train_on_experience(self,
+                            num_train_batches: int,
+                            batch_size: int,
+                            disable_progress: bool) -> list[float]:
 
         losses = []
-
         # The model learn to predict the game winner given a state and action
-        for _ in tqdm.trange(batches_per_iter, position=1, leave=False,
-                             desc='Learning from past experience'):
-            optimizer.zero_grad()
+        for _ in tqdm.trange(num_train_batches, position=1, leave=False,
+                             desc='Learning from past experience',
+                             disable=disable_progress):
+            self.optimizer.zero_grad()
 
-            states, actions, winners = make_batch(replay_buffer.sample_k(batch_size))
-            predictions = model(states)  # (batch, num_actions)
+            states, actions, winners = self._make_batch(self.replay_buffer.sample_k(batch_size))
+            predictions = self.model(states)  # (batch, num_actions)
             action_mask = torch.nn.functional.one_hot(actions, num_classes=NUM_ACTIONS)
-            
+
             action_mask = action_mask.type(torch.float32)  # (batch, num_actions)
             predictions = predictions * action_mask
             winners = winners.unsqueeze(-1) * action_mask  # (batch, num_actions)
 
-            loss = loss_fn(predictions, winners) / batch_size
+            loss = self.loss_fn(predictions, winners) / batch_size
             loss.backward()
-            optimizer.step()
-
+            self.optimizer.step()
             losses.append(loss.item())
-        
-        loss_ema.update(sum(losses) / len(losses))
 
-        # Play vs random opponent to validate performance
-        winrate, drawrate = evaluate_model_vs_random(rl_agent,
-                                                     random_agent,
-                                                     epsilon=validation_epsilon,
-                                                     num_games=random_validation_games)
-        winrate_ema.update(winrate)
-        drawrate_ema.update(drawrate)
-        loserate_ema.update(1 - winrate - drawrate)
+        return losses
 
-        # Play vs self to generate training data
-        epsilon = max(min_epsilon, (epsilon_anneal_range - iteration) / epsilon_anneal_range)
-        for _ in tqdm.trange(self_play_games_per_iter, position=1, leave=False,
-                             desc='Playing against self'):
-            agent_kwargs = dict(epsilon=epsilon)
-            _, winner, history = play_agent_game(game, rl_agent, rl_agent, agent_kwargs, agent_kwargs)
-            replay_buffer.append(history, winner)
-            selfplay_games += 1
+    def _generate_selfplay_experience(self,
+                                      num_selfplay_games: int,
+                                      selfplay_agent_kwargs: dict[str, Any] | None,
+                                      disable_progress: bool) -> None:
+        selfplay_agent_kwargs = selfplay_agent_kwargs or {}
 
-        iteration_hist = dict(iteration=iteration,
-                              loss=loss_ema.unsmoothed_value,
-                              win=winrate_ema.unsmoothed_value,
-                              lose=loserate_ema.unsmoothed_value,
-                              draw=drawrate_ema.unsmoothed_value,
-                              epsilon=epsilon,
-                              selfplay_games=selfplay_games)
+        for _ in tqdm.trange(num_selfplay_games, position=1, leave=False,
+                             desc='Playing against self', disable=disable_progress):
+            _, winner, history = play_agent_game(self.game,
+                                                 self.model_agent, self.model_agent,
+                                                 selfplay_agent_kwargs, selfplay_agent_kwargs)
+            print(len(history))
+            self.replay_buffer.append(history, winner)
+            self.total_selfplay_games += 1
 
-        progress_bar.set_postfix_str(f'loss={loss_ema.value:.2f} ' + 
-                                     f'W={winrate_ema.value:.2f} ' +
-                                     f'L={loserate_ema.value:.2f} ' +
-                                     f'D={drawrate_ema.value:.2f} ' +
-                                     f'eps={epsilon:.2f} ' +
-                                     f'games={selfplay_games}')
-        train_history.append(iteration_hist)
+    def _train_loop(self,
+                    num_iterations: int,
+                    selfplay_games_p_i: int,
+                    train_batches_p_i: int,
+                    batch_size: int,
+                    epsilon_anneal_iters: int,
+                    min_epsilon: float,
+                    disable_progress: bool):
+        train_history: list[dict[str, Any]] = []
 
-    return train_history
+        progress_bar = tqdm.trange(num_iterations, dynamic_ncols=True, colour='#22ee22', disable=disable_progress)
+        loss_ema = SmoothedAverage(initial=1.0)  # Used only in the progress bar
 
-            
+        for iteration in progress_bar:
+            epsilon = max(min_epsilon, (epsilon_anneal_iters - iteration) / epsilon_anneal_iters)
+            if iteration > 0:
+                self._generate_selfplay_experience(selfplay_games_p_i,
+                                                   dict(epsilon=epsilon),
+                                                   disable_progress=disable_progress)
+
+            batch_losses = self._train_on_experience(train_batches_p_i, batch_size, disable_progress=disable_progress)
+            iteration_loss = sum(batch_losses) / train_batches_p_i
+            if not disable_progress:
+                loss_ema.update(iteration_loss)
+                progress_bar.set_postfix_str(f'loss={loss_ema.value:.4f} ' +
+                                             f'eps={epsilon:.4f} ' +
+                                             f'games={self.total_selfplay_games}')
+
+            train_history.append(dict(iteration=iteration,
+                                      loss=iteration_loss,
+                                      epsilon=epsilon,
+                                      selfplay_games=self.total_selfplay_games))
+
+        return train_history
+
+    def evaluate_strength(self,
+                          num_evaluation_games: int,
+                          evaluation_epsilon: float,
+                          enemy_agent: BaseAgent,
+                          enemy_agent_kwargs: dict[str, Any] | None,
+                          disable_progress: bool) -> tuple[int, int]:
+        """TODO maybe move this out of this class since we don't need it during training"""
+        player_wins = draws = 0
+        for _ in tqdm.trange(num_evaluation_games, position=1, leave=False,
+                             desc='Playing against random moves', disable=disable_progress):
+            rl_player, winner, _ = play_agent_game(self.game,
+                                                   self.model_agent, enemy_agent,
+                                                   dict(epsilon=evaluation_epsilon), enemy_agent_kwargs)
+            if winner == rl_player:
+                player_wins += 1
+            elif winner == Player.NEUTRAL:
+                draws += 1
+
+        return player_wins, draws
+
+
 @torch.no_grad()
 def evaluate_model_vs_random(rl_agent: QModelAgent, random_agent: RandomAgent, epsilon: float, num_games: int):
     game = Game()
@@ -283,21 +314,18 @@ def play_agent_game(game: Game,
 
 
 if __name__ == '__main__':
-    model = CheckersQModel(num_hidden_layers=0, hidden_size=512)
-    train_hist = train_loop(model)
+    model = CheckersQModel(num_hidden_layers=1, hidden_size=256)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, weight_decay=3.0)
+    trainrun = QModelTrainRun(model, optimizer)
+    train_hist = trainrun.train()
+    print(train_hist)
 
     model_agent = QModelAgent(model)
     user_agent = UserInputAgent()
 
     play_agent_game(Game(), model_agent, user_agent, dict(epsilon=0.05))
-
-    df = pd.DataFrame(train_hist)
-    print(df)
-
-
     os.makedirs('results/', exist_ok=True)
-    df.to_csv('results/train_results.csv')
-
-    df.plot(x='iteration', y='win')
+    train_hist.to_csv('results/train_results.csv')
+    train_hist.plot(x='iteration', y='loss')
     plt.show()
 
