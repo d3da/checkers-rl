@@ -1,5 +1,6 @@
 #!/bin/env python3
 
+from abc import ABC, abstractmethod
 from collections import Counter, deque
 from typing import NamedTuple, Literal, Any
 import os
@@ -11,9 +12,9 @@ import math
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from model import CheckersQModel
+from model import CheckersQModel, CheckersVModel
 from game import Game, GameState, Player, Action, NUM_ACTIONS
-from agent import BaseAgent, QModelAgent, RandomAgent, UserInputAgent
+from agent import BaseAgent, QModelAgent, RandomAgent, UserInputAgent, VModelAgent
 
 
 class Sample(NamedTuple):
@@ -91,15 +92,14 @@ class SmoothedAverage:
         return self._last_value
 
 
-class QModelTrainRun:
-    def __init__(self,
-                 model: CheckersQModel,
-                 optimizer: torch.optim.Optimizer) -> None:
+class TrainRun(ABC):
+
+    def __init__(self, model_agent: BaseAgent, optimizer: torch.optim.Optimizer) -> None:
         self.model = model
         self.loss_fn = torch.nn.MSELoss(reduction='sum')
         self.optimizer = optimizer
 
-        self.model_agent = QModelAgent(self.model)
+        self.model_agent = model_agent
         self.random_agent = RandomAgent()
         self.game = Game()
 
@@ -166,34 +166,14 @@ class QModelTrainRun:
 
         return torch.tensor(np.array(states, dtype=np.float32)), \
                 torch.tensor(np.array(actions, dtype=np.int64)), \
-                torch.tensor(np.array(winners))
+                torch.tensor(np.array(winners, dtype=np.float32))
 
+    @abstractmethod
     def _train_on_experience(self,
                             num_train_batches: int,
                             batch_size: int,
                             disable_progress: bool) -> list[float]:
-
-        losses = []
-        # The model learn to predict the game winner given a state and action
-        for _ in tqdm.trange(num_train_batches, position=1, leave=False,
-                             desc='Learning from past experience',
-                             disable=disable_progress):
-            self.optimizer.zero_grad()
-
-            states, actions, winners = self._make_batch(self.replay_buffer.sample_k(batch_size))
-            predictions = self.model(states)  # (batch, num_actions)
-            action_mask = torch.nn.functional.one_hot(actions, num_classes=NUM_ACTIONS)
-
-            action_mask = action_mask.type(torch.float32)  # (batch, num_actions)
-            predictions = predictions * action_mask
-            winners = winners.unsqueeze(-1) * action_mask  # (batch, num_actions)
-
-            loss = self.loss_fn(predictions, winners) / batch_size
-            loss.backward()
-            self.optimizer.step()
-            losses.append(loss.item())
-
-        return losses
+        raise NotImplementedError
 
     def _generate_selfplay_experience(self,
                                       num_selfplay_games: int,
@@ -206,7 +186,6 @@ class QModelTrainRun:
             _, winner, history = play_agent_game(self.game,
                                                  self.model_agent, self.model_agent,
                                                  selfplay_agent_kwargs, selfplay_agent_kwargs)
-            print(len(history))
             self.replay_buffer.append(history, winner)
             self.total_selfplay_games += 1
 
@@ -246,12 +225,13 @@ class QModelTrainRun:
         return train_history
 
     def evaluate_strength(self,
-                          num_evaluation_games: int,
-                          evaluation_epsilon: float,
-                          enemy_agent: BaseAgent,
-                          enemy_agent_kwargs: dict[str, Any] | None,
-                          disable_progress: bool) -> tuple[int, int]:
+                          num_evaluation_games: int = 100,
+                          evaluation_epsilon: float = 0.05,
+                          enemy_agent: BaseAgent | None = None,
+                          enemy_agent_kwargs: dict[str, Any] | None = None,
+                          disable_progress: bool = False) -> tuple[int, int]:
         """TODO maybe move this out of this class since we don't need it during training"""
+        enemy_agent = enemy_agent or RandomAgent()
         player_wins = draws = 0
         for _ in tqdm.trange(num_evaluation_games, position=1, leave=False,
                              desc='Playing against random moves', disable=disable_progress):
@@ -264,6 +244,61 @@ class QModelTrainRun:
                 draws += 1
 
         return player_wins, draws
+
+
+class QModelTrainRun(TrainRun):
+    def __init__(self, model: CheckersQModel, optimizer: torch.optim.Optimizer) -> None:
+        super().__init__(QModelAgent(model), optimizer)
+        self.model = model
+
+    def _train_on_experience(self, num_train_batches: int, batch_size: int, disable_progress: bool) -> list[float]:
+        losses = []
+        # The model learn to predict the game winner given a state and action
+        for _ in tqdm.trange(num_train_batches, position=1, leave=False,
+                             desc='Learning from past experience',
+                             disable=disable_progress):
+            self.optimizer.zero_grad()
+
+            states, actions, winners = self._make_batch(self.replay_buffer.sample_k(batch_size))
+            predictions = self.model(states)  # (batch, num_actions)
+            action_mask = torch.nn.functional.one_hot(actions, num_classes=NUM_ACTIONS)
+
+            action_mask = action_mask.type(torch.float32)  # (batch, num_actions)
+            predictions = predictions * action_mask
+            winners = winners.unsqueeze(-1) * action_mask  # (batch, num_actions)
+
+            loss = self.loss_fn(predictions, winners) / batch_size
+            loss.backward()
+            self.optimizer.step()
+            losses.append(loss.item())
+
+        return losses
+
+
+
+class VModelTrainRun(TrainRun):
+    def __init__(self, model: CheckersVModel, optimizer: torch.optim.Optimizer) -> None:
+        super().__init__(VModelAgent(model), optimizer)
+        self.model = model
+
+    def _train_on_experience(self, num_train_batches: int, batch_size: int, disable_progress: bool) -> list[float]:
+        losses = []
+        # The model learn to predict the game winner given a state and action
+        for _ in tqdm.trange(num_train_batches, position=1, leave=False,
+                             desc='Learning from past experience',
+                             disable=disable_progress):
+            self.optimizer.zero_grad()
+
+            states, _, winners = self._make_batch(self.replay_buffer.sample_k(batch_size))
+            predictions = self.model(states)  # (batch, )
+            winners = winners.unsqueeze(-1)  # (batch, )
+
+            loss = self.loss_fn(predictions, winners) / batch_size
+            loss.backward()
+            self.optimizer.step()
+            losses.append(loss.item())
+
+        return losses
 
 
 @torch.no_grad()
