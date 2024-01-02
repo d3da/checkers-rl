@@ -168,21 +168,24 @@ class BaseEpsilonTreeSearchAgent(BaseEpsilonAgent, BaseTreeSearchAgent, ABC):
     def _select_nonepsilon_action(self, game: Game, **kwargs) -> Action:
         # This calls the BaseTreeSearchAgent's _select_action
         # (since it comes after BaseEpsilonAgent in self.__class__.__mro__)
-        return super(BaseEpsilonAgent)._select_action(game, **kwargs)
+        return super(BaseEpsilonAgent, self)._select_action(game, **kwargs)
 
 
 class VModelAgent(BaseEpsilonTreeSearchAgent):
     """
     Use a neural network that estimates the state-value function as a heuristic,
     and perform tree search using this heuristic.
+
+    TODO: calculate all moves in one batch?
     """
 
     def __init__(self, model: CheckersVModel):
         super().__init__()
         self.model = model
 
+    @torch.no_grad()
     def _heuristic(self, game: Game) -> float:
-        return self.model(game.get_state())
+        return self.model(torch.tensor(game.get_state().to_array(), dtype=torch.float32))
 
 
 class UserInputAgent(BaseAgent):
