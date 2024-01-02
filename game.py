@@ -214,8 +214,9 @@ class Game:
         Play a certain action on the board.
         Assumes that the action is legal, so ensure this first!
         """
-        if action not in self.get_legal_actions():
-            raise Exception
+        # (Commented out because get_legal_actions is expensive)
+        # if action not in self.get_legal_actions():
+            # raise Exception
 
         self._current_jump_history.append(self.current_jump[:])
         self._move_cache_history.append(self.move_cache[:])
