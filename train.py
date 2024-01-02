@@ -114,6 +114,7 @@ class TrainRun(ABC):
               batch_size: int = 128,
               epsilon_anneal_iters: int = 60,
               min_epsilon: float = 0.2,
+              max_num_moves: int | None = 200,
               disable_progress: bool = False) -> pd.DataFrame:
 
         self.replay_buffer = ReplayBuffer(replay_buffer_capacity)
@@ -123,6 +124,7 @@ class TrainRun(ABC):
                                          selfplay_games_p_i, train_batches_p_i,
                                          batch_size,
                                          epsilon_anneal_iters, min_epsilon,
+                                         max_num_moves=max_num_moves,
                                          disable_progress=disable_progress)
         return pd.DataFrame(train_history)
 
@@ -178,6 +180,7 @@ class TrainRun(ABC):
     def _generate_selfplay_experience(self,
                                       num_selfplay_games: int,
                                       selfplay_agent_kwargs: dict[str, Any] | None,
+                                      max_num_moves: int | None,
                                       disable_progress: bool) -> None:
         selfplay_agent_kwargs = selfplay_agent_kwargs or {}
 
@@ -185,7 +188,8 @@ class TrainRun(ABC):
                              desc='Playing against self', disable=disable_progress):
             _, winner, history = play_agent_game(self.game,
                                                  self.model_agent, self.model_agent,
-                                                 selfplay_agent_kwargs, selfplay_agent_kwargs)
+                                                 selfplay_agent_kwargs, selfplay_agent_kwargs,
+                                                 max_num_moves)
             self.replay_buffer.append(history, winner)
             self.total_selfplay_games += 1
 
@@ -196,6 +200,7 @@ class TrainRun(ABC):
                     batch_size: int,
                     epsilon_anneal_iters: int,
                     min_epsilon: float,
+                    max_num_moves: int | None,
                     disable_progress: bool):
         train_history: list[dict[str, Any]] = []
 
@@ -207,6 +212,7 @@ class TrainRun(ABC):
             if iteration > 0:
                 self._generate_selfplay_experience(selfplay_games_p_i,
                                                    dict(epsilon=epsilon),
+                                                   max_num_moves=max_num_moves,
                                                    disable_progress=disable_progress)
 
             batch_losses = self._train_on_experience(train_batches_p_i, batch_size, disable_progress=disable_progress)
@@ -324,7 +330,8 @@ def play_agent_game(game: Game,
                     agent_a: BaseAgent,
                     agent_b: BaseAgent,
                     agent_a_kwargs: dict[str, Any] | None = None,
-                    agent_b_kwargs: dict[str, Any] | None = None) \
+                    agent_b_kwargs: dict[str, Any] | None = None,
+                    max_num_moves: int | None = None) \
                             -> tuple[Player, Player, list[tuple[GameState, Action, Player]]]:
     agent_a_kwargs = agent_a_kwargs or {}
     agent_b_kwargs = agent_b_kwargs or {}
@@ -333,7 +340,10 @@ def play_agent_game(game: Game,
     game_history: list[tuple[GameState, Action, Player]] = []
     game.reset()
 
+    num_moves: int = 0
     while True:
+        num_moves += 1
+
         state = game.get_state()
         current_player = game.get_current_player()
 
@@ -344,9 +354,13 @@ def play_agent_game(game: Game,
         game.play(action)
         game_history.append((state, action, current_player))
 
+        # Check if game has ended
         if game.has_ended():
             return agent_a_player, game.get_winner(), game_history
 
+        # Stop playing if max_num_moves is reached
+        if max_num_moves and num_moves > max_num_moves:
+            return agent_a_player, Player.NEUTRAL, game_history
 
 if __name__ == '__main__':
     model = CheckersQModel(num_hidden_layers=1, hidden_size=256)
