@@ -22,10 +22,19 @@ Observations:
 - Game between heuristics bot (depth=3) and random bot lasts between 40 and 75 seconds approx (without pruning).
 - 100 games between heuristics bot and random bot
   > win_rate = 1.0
-  > draw_rate = 0.0
+  > lose_rate = 0.0
   > score_bot = 12.75
   > score_random = 0.19
   > Took 6332.291348695755 seconds to compute
+
+- Game between heuristics bot (depth=3) and random bot lasts between 15 and 28 seconds approx (with pruning).
+- 100 games between heuristics bot and random bot
+  > win_rate = 1.0
+  > lose_rate = 0.0
+  > score_bot = 12.75
+  > score_random = 0.27
+  > Took 2263.570200920105 seconds to compute
+
 """
         
 def botplay():
@@ -46,12 +55,13 @@ def botplay():
         current_player = board.turn
 
         if current_player == model_player:
-            move = bot.minimax(board, 3, True)[1]
+            move = bot.minimax(board, 3, -1000, 1000, True)[1]
         else:
             move = random.choice(board.legal_moves())
         board.push(move)
 
         if board.is_over():
+            print(board)
             return board.winner() == model_player, board.winner() == random_player, board_heu.get_count(board, Player.WHITE), board_heu.get_count(board, Player.BLACK)
         
 
@@ -124,7 +134,7 @@ def play(game: Game):
 if __name__ == '__main__':
     print("starting...")
     start_time = time.time()
-    print(evaluate_pc_vs_random(5))
+    print(evaluate_pc_vs_random(100))
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"The function took {elapsed_time} seconds to execute.")
