@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from model import CheckersQModel, CheckersVModel
 from game import Game, GameState, Player, Action, NUM_ACTIONS
-from agent import BaseAgent, QModelAgent, RandomAgent, UserInputAgent, VModelAgent
+from agent import play_agent_game, BaseAgent, QModelAgent, RandomAgent, UserInputAgent, VModelAgent
 
 
 class Sample(NamedTuple):
@@ -236,7 +236,10 @@ class TrainRun(ABC):
                           enemy_agent: BaseAgent | None = None,
                           enemy_agent_kwargs: dict[str, Any] | None = None,
                           disable_progress: bool = False) -> tuple[int, int]:
-        """TODO maybe move this out of this class since we don't need it during training"""
+        """
+        Play multiple games using this model vs a given enemy agent.
+        Returns tuple(the number of times this model won, the number of draws)
+        """
         enemy_agent = enemy_agent or RandomAgent()
         player_wins = draws = 0
         for _ in tqdm.trange(num_evaluation_games, position=1, leave=False,
