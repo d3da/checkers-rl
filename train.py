@@ -107,8 +107,8 @@ class TrainRun(ABC):
 
     def train(self,
               replay_buffer_capacity: int = 100_000,
-              initial_experience_samples: int | None = 10_000,
-              num_train_iterations: int = 100,
+              initial_experience_samples: int | None = 1_000,
+              num_train_iterations: int = 10,
               selfplay_games_p_i: int = 10,
               train_batches_p_i: int = 100,
               batch_size: int = 128,
@@ -329,41 +329,7 @@ def evaluate_model_vs_random(rl_agent: QModelAgent, random_agent: RandomAgent, e
     return win_rate, draw_rate
 
 
-def play_agent_game(game: Game,
-                    agent_a: BaseAgent,
-                    agent_b: BaseAgent,
-                    agent_a_kwargs: dict[str, Any] | None = None,
-                    agent_b_kwargs: dict[str, Any] | None = None,
-                    max_num_moves: int | None = None) \
-                            -> tuple[Player, Player, list[tuple[GameState, Action, Player]]]:
-    agent_a_kwargs = agent_a_kwargs or {}
-    agent_b_kwargs = agent_b_kwargs or {}
 
-    agent_a_player = random.choice([Player.BLACK, Player.WHITE])
-    game_history: list[tuple[GameState, Action, Player]] = []
-    game.reset()
-
-    num_moves: int = 0
-    while True:
-        num_moves += 1
-
-        state = game.get_state()
-        current_player = game.get_current_player()
-
-        agent = agent_a if current_player == agent_a_player else agent_b
-        kwargs = agent_a_kwargs if current_player == agent_a_player else agent_b_kwargs
-
-        action = agent.select_action(game=game, **kwargs)
-        game.play(action)
-        game_history.append((state, action, current_player))
-
-        # Check if game has ended
-        if game.has_ended():
-            return agent_a_player, game.get_winner(), game_history
-
-        # Stop playing if max_num_moves is reached
-        if max_num_moves and num_moves > max_num_moves:
-            return agent_a_player, Player.NEUTRAL, game_history
 
 if __name__ == '__main__':
     model = CheckersQModel(num_hidden_layers=1, hidden_size=256)
