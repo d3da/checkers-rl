@@ -2,17 +2,20 @@
 
 from collections import Counter, deque
 from typing import NamedTuple, Literal
-import os
+# import os
 import torch 
 import numpy as np
 import tqdm
 import random
 import math
-import pandas as pd
-import matplotlib.pyplot as plt
+# import pandas as pd
+# import matplotlib.pyplot as plt
 
 from model import CheckersQModel
 from game import Game, GameState, Player, Action
+from skopt import BayesSearchCV
+from skopt.space import Integer, Real
+from sklearn.base import BaseEstimator, RegressorMixin
 
 
 @torch.no_grad()
@@ -54,7 +57,7 @@ def select_action(model: torch.nn.Module,
     using an epsilon-greedy strategy w.r.t. the action-value function
 
     In other words, compute the estimated win probability for every action
-    and select the legal action with highest value.
+    and select the legal action with the highest value.
     Or, with a chance of epsilon, select any random legal action.
     """
     if random.random() < epsilon:
@@ -108,7 +111,6 @@ def play_random_moves_opponent(model: torch.nn.Module,
             return game.get_winner() == model_player, game.get_winner() == Player.NEUTRAL
 
 
-
 class Sample(NamedTuple):
     game_state: GameState
     action: Action
@@ -118,8 +120,8 @@ class Sample(NamedTuple):
 
 class ReplayBuffer:
     """
-    Store tuples of gamestate, action, current player and the game winner,
-    which can be used by the model to (hopefully) learn something from past experience
+    Store tuples of game state, action, current player and the game winner,
+    which can be used by the model to (hopefully) learn something from experience
     """
 
     def __init__(self, capacity: int):
@@ -165,8 +167,8 @@ def make_batch(samples: list[Sample]) -> tuple[torch.Tensor, torch.Tensor, torch
         winners.append(sample.winner.value)
 
     return torch.tensor(np.array(states, dtype=np.float32)), \
-            torch.tensor(np.array(actions, dtype=np.int64)), \
-            torch.tensor(np.array(winners))
+        torch.tensor(np.array(actions, dtype=np.int64)), \
+        torch.tensor(np.array(winners))
 
 
 class SmoothedAverage:
@@ -174,7 +176,7 @@ class SmoothedAverage:
     Class implementing an exponential moving average (EMA)
     https://en.wikipedia.org/wiki/Exponential_smoothing
 
-    Mainly so the progress meters don't jump all over the place and they are a bit easier to interpret
+    Mainly so the progress meters don't jump all over the place, and they are a bit easier to interpret
     """
     def __init__(self, alpha: float = 0.25, initial: float | None = None) -> None:
         self._ema: float | None = initial
@@ -229,7 +231,10 @@ def fill_replay_buffer(replay_buffer: ReplayBuffer,
     return games_played
 
 
-def train_loop(model: torch.nn.Module):
+def train_loop(model: torch.nn.Module,
+               learning_rate: float,  # Add the learning rate as an argument
+               self_play_games_per_iter: int,  # Add the self-play games per iteration as an argument
+               weight_decay: float) -> list[dict]:
     # Generate games into replay buffer
     buffer_size = 100_000
     buffer_initial_samples: int | None = 10_000
@@ -243,7 +248,7 @@ def train_loop(model: torch.nn.Module):
                                         num_samples=buffer_initial_samples)
 
     loss_fn = torch.nn.MSELoss(reduction='sum')
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, weight_decay=5.0)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     loss_ema = SmoothedAverage(initial=1.)
     winrate_ema = SmoothedAverage(alpha=0.1)
@@ -328,8 +333,9 @@ def evaluate_model_vs_random(model: torch.nn.Module, epsilon: float, num_games: 
     player_wins = 0
     draws = 0
 
-    for _ in tqdm.trange(num_games, position=1, leave=False, desc='Playing against random moves'):
+    for i in tqdm.trange(num_games, position=1, leave=False, desc='Playing against random moves'):
         player_won, draw = play_random_moves_opponent(model, game, epsilon)
+        print(f"Game {i + 1}: Player Won = {player_won}, Draw = {draw}")
         if player_won:
             player_wins += 1
         if draw:
@@ -338,19 +344,118 @@ def evaluate_model_vs_random(model: torch.nn.Module, epsilon: float, num_games: 
     win_rate = player_wins / num_games
     draw_rate = draws / num_games
 
-    return win_rate, draw_rate
+    return -win_rate, draw_rate
+
+
+class CheckersQModelWrapper(BaseEstimator, RegressorMixin):
+    def __init__(self, num_hidden_layers=0, hidden_size=0, learning_rate=0.01,
+                 self_play_games_per_iter=25, weight_decay=1e-4):
+        self.num_hidden_layers = num_hidden_layers
+        self.hidden_size = hidden_size
+        self.learning_rate = learning_rate
+        self.self_play_games_per_iter = self_play_games_per_iter
+        self.weight_decay = weight_decay
+
+        # Initialize model here
+        self.model = None
+
+        # Initialize train_hist to an empty list
+        self.train_hist = []
+
+    def fit(self, X, y=None, **kwargs):
+        # Update the model's parameters
+        self.model = CheckersQModel(
+            num_hidden_layers=self.num_hidden_layers,
+            hidden_size=self.hidden_size,
+            output_size=Game.NUM_ACTIONS
+        )
+
+        # Set other parameters as needed
+
+        # Train the model and get the metric to optimize (e.g., average win rate)
+        self.train_hist = train_loop(self.model, learning_rate=self.learning_rate,
+                                     self_play_games_per_iter=self.self_play_games_per_iter,
+                                     weight_decay=self.weight_decay)
+        # Return the metric to optimize (e.g., average win rate)
+        return self
+
+    def score(self, X, y=None, train_hist=None):  # Pass train_hist as an argument
+        if train_hist is None:
+            train_hist = self.train_hist  # Use self.train_hist if not provided
+
+        # Extract relevant information from the training history
+        num_wins = sum(iteration.get('num_wins', 0) for iteration in train_hist)
+        num_losses = sum(iteration.get('num_losses', 0) for iteration in train_hist)
+
+        # Calculate the average win rate
+        total_games = num_wins + num_losses
+        if total_games > 0:
+            average_win_rate = num_wins / total_games
+        else:
+            average_win_rate = 0.0  # Default if no games have been played
+
+        return average_win_rate
+
+    def get_params(self, deep=True):
+        # Implement get_params method here
+        return {'num_hidden_layers': self.num_hidden_layers,
+                'hidden_size': self.hidden_size,
+                'learning_rate': self.learning_rate,
+                'self_play_games_per_iter': self.self_play_games_per_iter,
+                'weight_decay': self.weight_decay}
+
+    def set_params(self, **parameters):
+        # Implement set_params method here
+        for parameter, value in parameters.items():
+            setattr(self, parameter, value)
+        return self
+
+
+def optimize_hyperparameters():
+    # Define the hyperparameter search space
+    search_space = {
+        'num_hidden_layers': Integer(0, 3),
+        'hidden_size': Integer(64, 1024),
+        'learning_rate': Real(1e-5, 1e-1, 'log-uniform'),
+        'self_play_games_per_iter': Integer(10, 100),
+        'weight_decay': Real(1e-5, 1e-1, 'log-uniform')
+    }
+
+    wrapper = CheckersQModelWrapper()
+
+    # Use BayesSearchCV for optimization
+    opt = BayesSearchCV(wrapper, search_space, n_iter=30, random_state=42, verbose=2)
+
+    # Pass a dummy X (input data) and y (target) for optimization
+    X_dummy = np.random.rand(100, 10)  # 100 samples, 10 features
+    y_dummy = np.random.randint(0, 2, 100)
+    best_optimized_params = opt.fit(X_dummy, y_dummy).best_params_
+
+    return best_optimized_params
+
 
 if __name__ == '__main__':
-    model = CheckersQModel(num_hidden_layers=0, hidden_size=512, output_size=Game.NUM_ACTIONS)
-    train_hist = train_loop(model)
+    # Perform Bayesian optimization to find the best hyperparameters
+    best_hyperparams = optimize_hyperparameters()
 
-    df = pd.DataFrame(train_hist)
-    print(df)
+    # Use the best hyperparameters to train the model
+    best_model = CheckersQModel(
+        num_hidden_layers=best_hyperparams['num_hidden_layers'],
+        hidden_size=best_hyperparams['hidden_size'],
+        output_size=Game.NUM_ACTIONS
+    )
 
+    # Train the model using the best hyperparameters
+    train_hist = train_loop(
+        best_model,
+        learning_rate=best_hyperparams['learning_rate'],
+        self_play_games_per_iter=best_hyperparams['self_play_games_per_iter'],
+        weight_decay=best_hyperparams['weight_decay']
+    )
 
-    os.makedirs('results/', exist_ok=True)
-    df.to_csv('results/train_results.csv')
+    # Print or save the training history
+    print(train_hist)
 
-    df.plot(x='iteration', y='win')
-    plt.show()
-
+    # Evaluate the model against random moves with the best hyperparameters
+    win_rate, draw_rate = evaluate_model_vs_random(best_model, epsilon=0.05, num_games=10)
+    print(f'Final Win Rate: {win_rate}, Draw Rate: {draw_rate}')
