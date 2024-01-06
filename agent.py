@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
+import math
 import numpy as np
 import random
 import heuristics
@@ -125,6 +126,8 @@ class BaseTreeSearchAgent(BaseAgent, ABC):
     """
     Agent that performs tree search (a single step for now)
     and picks a move that maximizes/minimizes a certain heuristic function.
+
+    TODO: Remove this (superseded by minimax tree search)
     """
 
     def _select_action(self,
@@ -214,7 +217,53 @@ class UserInputAgent(BaseAgent):
         return action
 
 
-class PieceCountHeuristicsAgent(BaseTreeSearchAgent):
+class BaseMinMaxSearchAgent(BaseTreeSearchAgent):
+    def __init__(self, *required_kwarg_names: str) -> None:
+        super().__init__('depth', *required_kwarg_names)
+
+    def _select_action(self, game: Game, **kwargs) -> Action:
+        _, best_action = self.minimax(game, kwargs['depth'])
+        assert best_action is not None
+        return best_action
+
+    def minimax(self, game: Game, depth: int, alpha: float = -math.inf, beta: float = math.inf) \
+            -> tuple[float, Action | None]:
+        """
+        Minimax algorithm
+        Returns the score and the best action to play according to the _heuristic function
+
+        TO DO:
+        - Problem with moves that are evaluated the same: the model will have a tendency to play a little too much on the left (or right) 
+          --> implement some randomness
+        """
+        max_player = game.get_current_player() == Player.WHITE
+
+        if depth == 0 or game.has_ended():
+            return self._heuristic(game), None
+
+        best_eval = -math.inf if max_player else math.inf
+        best_action = None
+        for action in game.get_legal_actions():
+            game.play(action)
+            eval, _ = self.minimax(game, depth - 1, alpha=alpha, beta=beta)
+            game.undo()
+
+            if max_player:
+                best_eval = max(best_eval, eval)
+                alpha = max(alpha, eval)
+            else:
+                best_eval = min(best_eval, eval)
+                beta = min(beta, eval)
+
+            if best_eval == eval:
+                best_action = action
+            if beta <= alpha:
+                break
+
+        return best_eval, best_action
+
+
+class PieceCountHeuristicsAgent(BaseMinMaxSearchAgent):
     """
     Select an action using tree search with the piece_count function
     as a heuristic.

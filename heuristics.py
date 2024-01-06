@@ -1,5 +1,4 @@
 import draughts
-import random
 
 from game import Game, Player, BOARD_SIZE
 
@@ -58,7 +57,10 @@ if __name__ == '__main__':
     from agent import PieceCountHeuristicsAgent, UserInputAgent
 
     game = Game()
-    play_agent_game(game, UserInputAgent(), PieceCountHeuristicsAgent())
+    play_agent_game(game,
+                    UserInputAgent(),
+                    PieceCountHeuristicsAgent(),
+                    agent_b_kwargs=dict(depth=3))
     print(game)
     print(f'Winner: {game.get_winner()}')
         
