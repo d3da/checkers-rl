@@ -106,7 +106,7 @@ class TrainRun(ABC):
     def train(self,
               replay_buffer_capacity: int = 100_000,
               initial_experience_samples: int | None = 10_000,
-              num_train_iterations: int = 10,
+              num_train_iterations: int = 100,
               selfplay_games_p_i: int = 10,
               train_batches_p_i: int = 100,
               batch_size: int = 128,
@@ -233,15 +233,16 @@ class TrainRun(ABC):
                           evaluation_epsilon: float = 0.05,
                           enemy_agent: BaseAgent | None = None,
                           enemy_agent_kwargs: dict[str, Any] | None = None,
-                          disable_progress: bool = False) -> tuple[int, int]:
+                          disable_progress: bool = False) -> tuple[int, int, int]:
         """
         Play multiple games using this model vs a given enemy agent.
-        Returns tuple(the number of times this model won, the number of draws)
+        Returns (num_wins, num_draws, num_losses) from the model agent's point of view
         """
         enemy_agent = enemy_agent or RandomAgent()
-        player_wins = draws = 0
-        for _ in tqdm.trange(num_evaluation_games, position=1, leave=False,
-                             desc='Playing against random moves', disable=disable_progress):
+        player_wins = draws = losses = 0
+        progress_bar = tqdm.trange(num_evaluation_games, position=1, leave=False,
+                                   desc='Evaluating playing strength', disable=disable_progress)
+        for _ in progress_bar:
             rl_player, winner, _ = play_agent_game(self.game,
                                                    self.model_agent, enemy_agent,
                                                    dict(epsilon=evaluation_epsilon), enemy_agent_kwargs)
@@ -249,8 +250,11 @@ class TrainRun(ABC):
                 player_wins += 1
             elif winner == Player.NEUTRAL:
                 draws += 1
+            else:
+                losses += 1
+            progress_bar.set_postfix_str(f'wins={player_wins}, draws={draws}, losses={losses}')
 
-        return player_wins, draws
+        return player_wins, draws, losses
 
 
 class QModelTrainRun(TrainRun):
@@ -314,4 +318,6 @@ if __name__ == '__main__':
     trainrun = QModelTrainRun(model, optimizer)
     train_hist = trainrun.train()
     print(train_hist)
+
+    wins, draws, losses = trainrun.evaluate_strength(100, 0.05)
 

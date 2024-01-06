@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 import numpy as np
 from skopt import BayesSearchCV
@@ -41,8 +42,9 @@ class CheckersQModelWrapper(BaseEstimator, RegressorMixin):
 
     def score(self, X, y=None, **kwargs):
         num_evaluation_games = 100
-        wins, draws = self.train_run.evaluate_strength(num_evaluation_games=num_evaluation_games)
-        return wins / num_evaluation_games
+        wins, draws, losses = self.train_run.evaluate_strength(num_evaluation_games=num_evaluation_games)
+        winrate = wins / num_evaluation_games
+        return winrate
 
     def get_params(self, deep=True):
         # Implement get_params method here
@@ -72,19 +74,24 @@ def optimize_hyperparameters():
     wrapper = CheckersQModelWrapper()
 
     # Use BayesSearchCV for optimization
-    opt = BayesSearchCV(wrapper, search_space, n_iter=30, random_state=42, verbose=2)
+    opt = BayesSearchCV(wrapper, search_space, n_iter=30, random_state=42, verbose=2, cv=3)
 
     # Pass a dummy X (input data) and y (target) for optimization
     X_dummy = np.random.rand(100, 10)  # 100 samples, 10 features
     y_dummy = np.random.randint(0, 2, 100)
-    best_optimized_params = opt.fit(X_dummy, y_dummy).best_params_
-
-    return best_optimized_params
+    opt.fit(X_dummy, y_dummy)
+    return opt.best_params_, opt.cv_results_
 
 
 if __name__ == '__main__':
     # Perform Bayesian optimization to find the best hyperparameters
-    best_hyperparams = optimize_hyperparameters()
+    best_hyperparams, results = optimize_hyperparameters()
+    res_df = pd.DataFrame(results)
+
+    print(best_hyperparams)
+    print(res_df)
+
+    res_df.to_csv('search_results.csv')
 
     # Use the best hyperparameters to train the model
     best_model = CheckersQModel(
@@ -93,6 +100,7 @@ if __name__ == '__main__':
     )
 
     # Train the model using the best hyperparameters
+    print('Training using best hyperparameters')
     best_optimizer = torch.optim.SGD(best_model.parameters(),
                                      lr=best_hyperparams['learning_rate'],
                                      weight_decay=best_hyperparams['weight_decay'])
@@ -101,5 +109,6 @@ if __name__ == '__main__':
 
     # Evaluate the model against random moves with the best hyperparameters
     num_games = 100
-    wins, draws = best_hparams_train_run.evaluate_strength(num_evaluation_games=num_games)
+    wins, draws, losses = best_hparams_train_run.evaluate_strength(num_evaluation_games=num_games)
     print(f'Final Win Rate: {wins / num_games}, Draw Rate: {draws / num_games}')
+
