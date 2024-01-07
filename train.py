@@ -10,6 +10,8 @@ import random
 import math
 import pandas as pd
 import matplotlib.pyplot as plt
+from datetime import datetime
+
 
 from model import CheckersQModel
 from game import Game, GameState, Player, Action, NUM_ACTIONS
@@ -283,13 +285,13 @@ def play_agent_game(game: Game,
 
 def save_model(model):
     # Save model
-    model_path = 'results/model.pth'
+    model_path = 'model/model.pth'
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     torch.save(model.state_dict(), model_path)
     print(f"Model saved at: {model_path}")
 
 def load_model(model):
-    model_path = 'results/checkers_model.pth'
+    model_path = 'model/model.pth'
     try:
         model.load_state_dict(torch.load(model_path))
         print(f"Model loaded from: {model_path}")
@@ -297,24 +299,51 @@ def load_model(model):
         print(f"No model found at: {model_path}. Training from scratch.")
 
 if __name__ == '__main__':
+
+    # Setup
     model = CheckersQModel(num_hidden_layers=0, hidden_size=512)
     load_model(model)  # load previously saved model, or from scratch
 
-    train_hist = train_loop(model)
-    save_model(model)
+    # training loop
+    while True:
+        train_hist = train_loop(model)
+        save_model(model)
 
-    model_agent = QModelAgent(model)
-    user_agent = UserInputAgent()
+        model_agent = QModelAgent(model)
+        user_agent = UserInputAgent()
 
-    play_agent_game(Game(), model_agent, user_agent, dict(epsilon=0.05))
+        #play_agent_game(Game(), model_agent, user_agent, dict(epsilon=0.05))
 
-    df = pd.DataFrame(train_hist)
-    print(df)
+        df = pd.DataFrame(train_hist)
 
+        # Save training results
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        results_dir = f'results/{timestamp}/'
+        os.makedirs(results_dir, exist_ok=True)
+        csv_filename = f'train_results_{timestamp}.csv'
+        df.to_csv(os.path.join(results_dir, csv_filename))
 
-    os.makedirs('results/', exist_ok=True)
-    df.to_csv('results/train_results.csv')
+        # PLOTTING
 
-    df.plot(x='iteration', y='win')
-    plt.show()
+        # Convert win and loss rates to percentages
+        df['win_percent'] = df['win'] * 100
+        df['lose_percent'] = df['lose'] * 100
 
+        # Figure formatting
+        plt.figure(figsize=(10, 6))  # Set the figure size
+        plt.plot(df['iteration'], df['win_percent'], label='Win Rate', color='green', marker='o')
+        plt.plot(df['iteration'], df['lose_percent'], label='Loss Rate', color='red', marker='o')
+        plt.axhline(0, color='black', linestyle='--', linewidth=1)
+        plt.axhline(100, color='black', linestyle='--', linewidth=1)
+        plt.xlabel('Iteration')
+        plt.ylabel('Win/Loss Rate (%)')
+        plt.title('Win-Loss Ratio Over Iterations')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+        # Ask for another training loop
+        user_input = input("Do you want to start another training loop? (y/n): ").lower()
+        if user_input != 'y':
+            print("Finished training.")
+            break  # Exit the loop if the user enters anything other than 'y'
