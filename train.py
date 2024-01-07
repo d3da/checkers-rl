@@ -284,7 +284,6 @@ def play_agent_game(game: Game,
             return agent_a_player, game.get_winner(), game_history
 
 def save_model(model):
-    # Save model
     model_path = 'model/model.pth'
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     torch.save(model.state_dict(), model_path)
@@ -302,9 +301,9 @@ if __name__ == '__main__':
 
     # Setup
     model = CheckersQModel(num_hidden_layers=0, hidden_size=512)
-    load_model(model)  # load previously saved model, or from scratch
+    load_model(model)  # will load prev model or new depending on existence of model
 
-    # training loop
+    # Training loop
     while True:
         train_hist = train_loop(model)
         save_model(model)
@@ -324,17 +323,18 @@ if __name__ == '__main__':
         df.to_csv(os.path.join(results_dir, csv_filename))
 
         # PLOTTING
-
         # Convert win and loss rates to percentages
         df['win_percent'] = df['win'] * 100
         df['lose_percent'] = df['lose'] * 100
 
         # Figure formatting
-        plt.figure(figsize=(10, 6))  # Set the figure size
+        plt.figure(figsize=(10, 6))
         plt.plot(df['iteration'], df['win_percent'], label='Win Rate', color='green', marker='o')
         plt.plot(df['iteration'], df['lose_percent'], label='Loss Rate', color='red', marker='o')
+
         plt.axhline(0, color='black', linestyle='--', linewidth=1)
         plt.axhline(100, color='black', linestyle='--', linewidth=1)
+
         plt.xlabel('Iteration')
         plt.ylabel('Win/Loss Rate (%)')
         plt.title('Win-Loss Ratio Over Iterations')
@@ -346,4 +346,4 @@ if __name__ == '__main__':
         user_input = input("Do you want to start another training loop? (y/n): ").lower()
         if user_input != 'y':
             print("Finished training.")
-            break  # Exit the loop if the user enters anything other than 'y'
+            break
