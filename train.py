@@ -233,14 +233,14 @@ class TrainRun(ABC):
                           evaluation_epsilon: float = 0.05,
                           enemy_agent: BaseAgent | None = None,
                           enemy_agent_kwargs: dict[str, Any] | None = None,
-                          disable_progress: bool = False) -> tuple[int, int, int]:
+                          disable_progress: bool = False) -> tuple[float, float, float]:
         """
         Play multiple games using this model vs a given enemy agent.
-        Returns (num_wins, num_draws, num_losses) from the model agent's point of view
+        Returns (winrate, drawrate, lossrate) from the model agent's point of view
         """
         enemy_agent = enemy_agent or RandomAgent()
         player_wins = draws = losses = 0
-        progress_bar = tqdm.trange(num_evaluation_games, position=1, leave=False,
+        progress_bar = tqdm.trange(num_evaluation_games, position=0, leave=False,
                                    desc='Evaluating playing strength', disable=disable_progress)
         for _ in progress_bar:
             rl_player, winner, _ = play_agent_game(self.game,
@@ -254,7 +254,10 @@ class TrainRun(ABC):
                 losses += 1
             progress_bar.set_postfix_str(f'wins={player_wins}, draws={draws}, losses={losses}')
 
-        return player_wins, draws, losses
+        winrate = player_wins / num_evaluation_games
+        drawrate = draws / num_evaluation_games
+        lossrate = losses / num_evaluation_games
+        return winrate, drawrate, lossrate
 
 
 class QModelTrainRun(TrainRun):
@@ -319,5 +322,5 @@ if __name__ == '__main__':
     train_hist = trainrun.train()
     print(train_hist)
 
-    wins, draws, losses = trainrun.evaluate_strength(100, 0.05)
+    wr, dr, lr = trainrun.evaluate_strength(100, 0.05)
 

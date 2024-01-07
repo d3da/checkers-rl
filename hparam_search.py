@@ -43,14 +43,14 @@ class CheckersQModelWrapper(BaseEstimator, RegressorMixin):
         self.train_run = QModelTrainRun(self.model, self.optimzer)
 
         # Train the model and get the metric to optimize (e.g., average win rate)
-        self.train_hist = self.train_run.train(selfplay_games_p_i=self.self_play_games_per_iter)
+        self.train_hist = self.train_run.train(selfplay_games_p_i=self.self_play_games_per_iter,
+                                               disable_progress=True)
         return self
 
     def score(self, X, y=None, **kwargs):
-        num_evaluation_games = 100
-        wins, draws, losses = self.train_run.evaluate_strength(num_evaluation_games=num_evaluation_games)
-        winrate = wins / num_evaluation_games
-        return winrate
+        wr, dr, lr = self.train_run.evaluate_strength(disable_progress=True)
+        print(f'winrate: {wr}, draws: {dr}, losses: {lr}')
+        return wr
 
     def get_params(self, deep=True):
         # Implement get_params method here
@@ -114,7 +114,6 @@ if __name__ == '__main__':
     train_hist = best_hparams_train_run.train(selfplay_games_p_i=best_hyperparams['self_play_games_per_iter'])
 
     # Evaluate the model against random moves with the best hyperparameters
-    num_games = 100
-    wins, draws, losses = best_hparams_train_run.evaluate_strength(num_evaluation_games=num_games)
-    print(f'Final Win Rate: {wins / num_games}, Draw Rate: {draws / num_games}')
+    wr, dr, lr = best_hparams_train_run.evaluate_strength()
+    print(f'Final Win Rate: {wr}, Draw Rate: {dr}')
 
