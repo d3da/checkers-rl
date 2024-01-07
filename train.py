@@ -290,15 +290,17 @@ def save_model(model):
 
 def load_model(model):
     model_path = 'results/checkers_model.pth'
-    model.load_state_dict(torch.load(model_path))
-    print(f"Model loaded from: {model_path}")
+    try:
+        model.load_state_dict(torch.load(model_path))
+        print(f"Model loaded from: {model_path}")
+    except FileNotFoundError:
+        print(f"No model found at: {model_path}. Training from scratch.")
 
 if __name__ == '__main__':
     model = CheckersQModel(num_hidden_layers=0, hidden_size=512)
-    load_model(model)
+    load_model(model)  # load previously saved model, or from scratch
 
     train_hist = train_loop(model)
-
     save_model(model)
 
     model_agent = QModelAgent(model)
