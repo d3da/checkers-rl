@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import pandas as pd
 import torch
 import numpy as np
@@ -80,7 +81,15 @@ def optimize_hyperparameters():
     wrapper = CheckersQModelWrapper()
 
     # Use BayesSearchCV for optimization
-    opt = BayesSearchCV(wrapper, search_space, n_iter=30, random_state=42, verbose=2, cv=3)
+    n_jobs = int((os.cpu_count() or 1.5) * 0.75)
+    opt = BayesSearchCV(wrapper,
+                        search_space,
+                        n_iter=50,
+                        random_state=42,
+                        verbose=2,
+                        cv=5,
+                        n_jobs=n_jobs,
+                        n_points=8)
 
     # Pass a dummy X (input data) and y (target) for optimization
     X_dummy = np.random.rand(100, 10)  # 100 samples, 10 features
