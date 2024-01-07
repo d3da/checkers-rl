@@ -238,7 +238,7 @@ class BaseMinMaxSearchAgent(BaseTreeSearchAgent):
         max_player = game.get_current_player() == Player.WHITE
 
         if depth == 0 or game.has_ended():
-            return self._heuristic(game), None
+            return self._evaluate(game), None
 
         best_eval = -math.inf if max_player else math.inf
         best_action = None
@@ -263,6 +263,24 @@ class BaseMinMaxSearchAgent(BaseTreeSearchAgent):
                 break
 
         return best_eval, best_action
+
+    def _evaluate(self, game: Game) -> float:
+        """
+        Evaluate a game position using a heuristic function,
+        but fully play out jump-chain moves that are completely forced.
+
+        (other forced moves are not played out because it requires checking
+         game.get_legal_moves() which is very expensive if not inside a jump-chain)
+        """
+        num_forced_jump_moves = 0
+        while game.is_forced_jump_chain():
+            num_forced_jump_moves += 1
+            game.play(game.get_legal_actions()[0])
+
+        eval = self._heuristic(game)
+        for _ in range(num_forced_jump_moves):
+            game.undo()
+        return eval
 
 
 class PieceCountHeuristicsAgent(BaseMinMaxSearchAgent):
