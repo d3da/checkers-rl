@@ -290,6 +290,14 @@ class Game:
         """
         return self.board.__str__() + f'\n{self.get_current_player()._name_} to play'
 
+    def is_jumping(self) -> bool:
+        """Return True if a player is currently within a jump chain."""
+        return len(self.current_jump) >= 1
+
+    def is_forced_jump_chain(self) -> bool:
+        """Return True if a player is jumping and has only one legal action."""
+        return self.is_jumping() and len(self.move_cache) == 1
+
 
 if __name__ == '__main__':
     game = Game()
