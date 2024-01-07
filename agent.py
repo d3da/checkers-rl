@@ -233,8 +233,7 @@ class BaseMinMaxSearchAgent(BaseTreeSearchAgent):
         Returns the score and the best action to play according to the _heuristic function
 
         TO DO:
-        - Problem with moves that are evaluated the same: the model will have a tendency to play a little too much on the left (or right) 
-          --> implement some randomness
+            - Play forced moves before calling self._heuristic (at least while in a jump chain)
         """
         max_player = game.get_current_player() == Player.WHITE
 
@@ -243,7 +242,10 @@ class BaseMinMaxSearchAgent(BaseTreeSearchAgent):
 
         best_eval = -math.inf if max_player else math.inf
         best_action = None
-        for action in game.get_legal_actions():
+        actions = game.get_legal_actions()
+        random.shuffle(actions)
+
+        for action in actions:
             game.play(action)
             eval, _ = self.minimax(game, depth - 1, alpha=alpha, beta=beta)
             game.undo()
