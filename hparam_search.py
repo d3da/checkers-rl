@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import pandas as pd
 import torch
 import numpy as np
@@ -7,6 +8,11 @@ from sklearn.base import BaseEstimator, RegressorMixin
 
 from train import QModelTrainRun
 from model import CheckersQModel
+
+# np.int is deprecated since numpy 1.20, but skopt still uses it.
+# For some reason they haven't fixed it so this workaround will do for now.
+np.int = np.int64
+
 
 class CheckersQModelWrapper(BaseEstimator, RegressorMixin):
     def __init__(self, num_hidden_layers=0, hidden_size=0, learning_rate=0.01,
