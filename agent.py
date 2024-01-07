@@ -155,43 +155,6 @@ class BaseTreeSearchAgent(BaseAgent, ABC):
         raise NotImplementedError
 
 
-class BaseEpsilonTreeSearchAgent(BaseEpsilonAgent, BaseTreeSearchAgent, ABC):
-    """
-    An agent that picks a random move with chance epsilon (see BaseEpsilonAgent)
-    and otherwise performs tree search (see BaseTreeSearchAgent) using the
-    _heuristic function implemented by a subclass.
-    """
-
-    def __init__(self, *required_kwarg_names: str) -> None:
-        super().__init__(*required_kwarg_names)
-        assert 'epsilon' in self.required_kwarg_names
-
-    def _select_action(self, game: Game, **kwargs) -> Action:
-        return super()._select_action(game, **kwargs)
-
-    def _select_nonepsilon_action(self, game: Game, **kwargs) -> Action:
-        # This calls the BaseTreeSearchAgent's _select_action
-        # (since it comes after BaseEpsilonAgent in self.__class__.__mro__)
-        return super(BaseEpsilonAgent, self)._select_action(game, **kwargs)
-
-
-class VModelAgent(BaseEpsilonTreeSearchAgent):
-    """
-    Use a neural network that estimates the state-value function as a heuristic,
-    and perform tree search using this heuristic.
-
-    TODO: calculate all moves in one batch?
-    """
-
-    def __init__(self, model: CheckersVModel):
-        super().__init__()
-        self.model = model
-
-    @torch.no_grad()
-    def _heuristic(self, game: Game) -> float:
-        return self.model(torch.tensor(game.get_state().to_array(), dtype=torch.float32))
-
-
 class UserInputAgent(BaseAgent):
     """
     Use sys.stdin to select an action.
@@ -291,6 +254,43 @@ class PieceCountHeuristicsAgent(BaseMinMaxSearchAgent):
 
     def _heuristic(self, game: Game) -> float:
         return heuristics.piece_count(game)
+
+
+class BaseEpsilonMinMaxAgent(BaseEpsilonAgent, BaseMinMaxSearchAgent, ABC):
+    """
+    An agent that picks a random move with chance epsilon (see BaseEpsilonAgent)
+    and otherwise performs tree search (see BaseTreeSearchAgent) using the
+    _heuristic function implemented by a subclass.
+    """
+
+    def __init__(self, *required_kwarg_names: str) -> None:
+        super().__init__(*required_kwarg_names)
+        assert 'epsilon' in self.required_kwarg_names
+        assert 'depth' in self.required_kwarg_names
+
+    def _select_action(self, game: Game, **kwargs) -> Action:
+        # This calls BaseEpsilonAgent's _select_action
+        return super()._select_action(game, **kwargs)
+
+    def _select_nonepsilon_action(self, game: Game, **kwargs) -> Action:
+        # This calls the BaseMinMaxSearchAgent's _select_action
+        # (since it comes after BaseEpsilonAgent in self.__class__.__mro__)
+        return super(BaseEpsilonAgent, self)._select_action(game, **kwargs)
+
+
+class VModelAgent(BaseEpsilonMinMaxAgent):
+    """
+    Use a neural network that estimates the state-value function as a heuristic,
+    and perform tree search using this heuristic.
+    """
+
+    def __init__(self, model: CheckersVModel):
+        super().__init__()
+        self.model = model
+
+    @torch.no_grad()
+    def _heuristic(self, game: Game) -> float:
+        return self.model(torch.tensor(game.get_state().to_array(), dtype=torch.float32))
 
 
 def play_agent_game(game: Game,

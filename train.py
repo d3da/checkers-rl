@@ -191,6 +191,12 @@ class TrainRun(ABC):
             self.replay_buffer.append(history, winner)
             self.total_selfplay_games += 1
 
+    def _build_agent_kwargs_train(self, **kwargs):
+        return kwargs
+
+    def _build_agent_kwargs_eval(self, **kwargs):
+        return kwargs
+
     def _train_loop(self,
                     num_iterations: int,
                     selfplay_games_p_i: int,
@@ -207,9 +213,11 @@ class TrainRun(ABC):
 
         for iteration in progress_bar:
             epsilon = max(min_epsilon, (epsilon_anneal_iters - iteration) / epsilon_anneal_iters)
+            train_kwargs = self._build_agent_kwargs_train(epsilon=epsilon)
+
             if iteration > 0:
                 self._generate_selfplay_experience(selfplay_games_p_i,
-                                                   dict(epsilon=epsilon),
+                                                   train_kwargs,
                                                    max_num_moves=max_num_moves,
                                                    disable_progress=disable_progress)
 
@@ -243,9 +251,11 @@ class TrainRun(ABC):
         progress_bar = tqdm.trange(num_evaluation_games, position=0, leave=False,
                                    desc='Evaluating playing strength', disable=disable_progress)
         for _ in progress_bar:
+            eval_kwargs = self._build_agent_kwargs_eval(epsilon=evaluation_epsilon)
             rl_player, winner, _ = play_agent_game(self.game,
                                                    self.model_agent, enemy_agent,
-                                                   dict(epsilon=evaluation_epsilon), enemy_agent_kwargs)
+                                                   eval_kwargs,
+                                                   enemy_agent_kwargs)
             if winner == rl_player:
                 player_wins += 1
             elif winner == Player.NEUTRAL:
@@ -291,9 +301,15 @@ class QModelTrainRun(TrainRun):
 
 
 class VModelTrainRun(TrainRun):
-    def __init__(self, model: CheckersVModel, optimizer: torch.optim.Optimizer) -> None:
+    def __init__(self,
+                 model: CheckersVModel,
+                 optimizer: torch.optim.Optimizer,
+                 train_search_depth: int = 2,
+                 eval_search_depth: int = 3) -> None:
         super().__init__(VModelAgent(model), optimizer)
         self.model = model
+        self.train_search_depth = train_search_depth
+        self.eval_search_depth = eval_search_depth
 
     def _train_on_experience(self, num_train_batches: int, batch_size: int, disable_progress: bool) -> list[float]:
         losses = []
@@ -314,13 +330,20 @@ class VModelTrainRun(TrainRun):
 
         return losses
 
+    def _build_agent_kwargs_train(self, **kwargs):
+        return dict(depth=self.train_search_depth) | super()._build_agent_kwargs_train(**kwargs)
+
+    def _build_agent_kwargs_eval(self, **kwargs):
+        return dict(depth=self.eval_search_depth) | super()._build_agent_kwargs_eval(**kwargs)
+
 
 if __name__ == '__main__':
-    model = CheckersQModel(num_hidden_layers=1, hidden_size=256)
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, weight_decay=3.0)
-    trainrun = QModelTrainRun(model, optimizer)
+    model = CheckersVModel(num_hidden_layers=1, hidden_size=1024)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    trainrun = VModelTrainRun(model, optimizer)
     train_hist = trainrun.train()
     print(train_hist)
 
     wr, dr, lr = trainrun.evaluate_strength(100, 0.05)
+    print(f'win: {wr}, draw: {dr}, loss: {lr}')
 
