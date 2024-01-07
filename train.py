@@ -139,8 +139,8 @@ def fill_replay_buffer_random_moves(replay_buffer: ReplayBuffer,
 
 def train_loop(model: CheckersQModel):
     # Generate games into replay buffer
-    buffer_size = 100_000
-    buffer_initial_samples: int | None = 10_000
+    buffer_size = 1000
+    buffer_initial_samples: int | None = 100
 
     game = Game()
     rl_agent = QModelAgent(model)
@@ -160,16 +160,16 @@ def train_loop(model: CheckersQModel):
     loserate_ema = SmoothedAverage(alpha=0.1)
     drawrate_ema = SmoothedAverage(alpha=0.1)
 
-    num_iterations = 100
+    num_iterations = 3
     epsilon_anneal_range = 100
     min_epsilon = 0.2
 
-    self_play_games_per_iter = 25
-    batches_per_iter = 100
+    self_play_games_per_iter = 5
+    batches_per_iter = 10
     batch_size = 128
 
     validation_epsilon = 0.05
-    random_validation_games = 10
+    random_validation_games = 5
 
     train_history = []
     progress_bar = tqdm.trange(num_iterations, dynamic_ncols=True, colour='#22ee22')
@@ -281,10 +281,25 @@ def play_agent_game(game: Game,
         if game.has_ended():
             return agent_a_player, game.get_winner(), game_history
 
+def save_model(model):
+    # Save model
+    model_path = 'results/model.pth'
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    torch.save(model.state_dict(), model_path)
+    print(f"Model saved at: {model_path}")
+
+def load_model(model):
+    model_path = 'results/checkers_model.pth'
+    model.load_state_dict(torch.load(model_path))
+    print(f"Model loaded from: {model_path}")
 
 if __name__ == '__main__':
     model = CheckersQModel(num_hidden_layers=0, hidden_size=512)
+    load_model(model)
+
     train_hist = train_loop(model)
+
+    save_model(model)
 
     model_agent = QModelAgent(model)
     user_agent = UserInputAgent()
