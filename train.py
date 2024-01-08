@@ -2,6 +2,8 @@
 
 from abc import ABC, abstractmethod
 from collections import Counter, deque
+import os
+from datetime import datetime
 from typing import NamedTuple, Literal, Any
 import torch 
 import numpy as np
@@ -92,14 +94,19 @@ class SmoothedAverage:
 
 class TrainRun(ABC):
 
-    def __init__(self, model_agent: BaseAgent) -> None:
-        self.model_agent = model_agent
-        self.loss_fn = torch.nn.MSELoss(reduction='sum')
-
+    def __init__(self,
+                 model: torch.nn.Module,
+                 model_agent: BaseAgent,
+                 results_dir: str = 'results',
+                 results_subdir: str | None = None) -> None:
+        self.model = model
         self.model_agent = model_agent
         self.random_agent = RandomAgent()
         self.game = Game()
-
+        self.loss_fn = torch.nn.MSELoss(reduction='sum')
+        self.results_dir = results_dir
+        self.results_subdir = results_subdir or f'train_run_{datetime.now().strftime("%Y%m%d%H%M%S")}'
+        self.save_location = os.path.join(results_dir, self.results_subdir)
         self.total_selfplay_games = 0
 
     def train(self,
@@ -125,7 +132,11 @@ class TrainRun(ABC):
                                          epsilon_anneal_iters, min_epsilon,
                                          max_num_moves=max_num_moves,
                                          disable_progress=disable_progress)
-        return pd.DataFrame(train_history)
+        hist_df = pd.DataFrame(train_history)
+        os.makedirs(self.save_location, exist_ok=True)
+        self.save_history_csv(hist_df, os.path.join(self.save_location, f'train_history_{self.__class__.__name__}.csv'))
+        self.save_model(os.path.join(self.save_location, f'model_weights_{self.__class__.__name__}.csv'))
+        return hist_df
 
     def _fill_replay_buffer_random_moves(self,
                                          num_samples: int | None,
@@ -270,11 +281,25 @@ class TrainRun(ABC):
         lossrate = losses / num_evaluation_games
         return winrate, drawrate, lossrate
 
+    def save_history_csv(self, train_history: pd.DataFrame, save_path: str | os.PathLike):
+        train_history.to_csv(save_path)
+        print(f"Training history saved at: {save_path}")
+
+    def save_model(self, model_path: str | os.PathLike):
+        torch.save(model.state_dict(), model_path)
+        print(f"Model saved at: {model_path}")
+
+    def load_model(self, model_path: str | os.PathLike):
+        """
+        Load a model from disk. May throw a FileNotFoundError
+        """
+        model.load_state_dict(torch.load(model_path))
+        print(f"Model loaded from: {model_path}")
+
 
 class QModelTrainRun(TrainRun):
     def __init__(self, model: CheckersQModel) -> None:
-        super().__init__(QModelAgent(model))
-        self.model = model
+        super().__init__(model, QModelAgent(model))
 
     def _train_on_experience(self, num_train_batches: int, batch_size: int, disable_progress: bool) -> list[float]:
         losses = []
@@ -306,8 +331,7 @@ class VModelTrainRun(TrainRun):
                  model: CheckersVModel,
                  train_search_depth: int = 2,
                  eval_search_depth: int = 3) -> None:
-        super().__init__(VModelAgent(model))
-        self.model = model
+        super().__init__(model, VModelAgent(model))
         self.train_search_depth = train_search_depth
         self.eval_search_depth = eval_search_depth
 
