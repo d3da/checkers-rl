@@ -38,13 +38,14 @@ class CheckersQModelWrapper(BaseEstimator, RegressorMixin):
         )
 
         # Set other parameters as needed
-        self.optimzer = torch.optim.SGD(self.model.parameters(),
+        self.optimizer = torch.optim.SGD(self.model.parameters(),
                                         lr=self.learning_rate,
                                         weight_decay=self.weight_decay)
-        self.train_run = QModelTrainRun(self.model, self.optimzer)
+        self.train_run = QModelTrainRun(self.model)
 
         # Train the model and get the metric to optimize (e.g., average win rate)
-        self.train_hist = self.train_run.train(selfplay_games_p_i=self.self_play_games_per_iter,
+        self.train_hist = self.train_run.train(self.optimizer,
+                                               selfplay_games_p_i=self.self_play_games_per_iter,
                                                disable_progress=True)
         return self
 
@@ -119,8 +120,9 @@ if __name__ == '__main__':
     best_optimizer = torch.optim.SGD(best_model.parameters(),
                                      lr=best_hyperparams['learning_rate'],
                                      weight_decay=best_hyperparams['weight_decay'])
-    best_hparams_train_run = QModelTrainRun(best_model, best_optimizer)
-    train_hist = best_hparams_train_run.train(selfplay_games_p_i=best_hyperparams['self_play_games_per_iter'])
+    best_hparams_train_run = QModelTrainRun(best_model)
+    train_hist = best_hparams_train_run.train(best_optimizer,
+                                              selfplay_games_p_i=best_hyperparams['self_play_games_per_iter'])
 
     # Evaluate the model against random moves with the best hyperparameters
     wr, dr, lr = best_hparams_train_run.evaluate_strength()

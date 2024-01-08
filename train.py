@@ -92,10 +92,9 @@ class SmoothedAverage:
 
 class TrainRun(ABC):
 
-    def __init__(self, model_agent: BaseAgent, optimizer: torch.optim.Optimizer) -> None:
+    def __init__(self, model_agent: BaseAgent) -> None:
         self.model_agent = model_agent
         self.loss_fn = torch.nn.MSELoss(reduction='sum')
-        self.optimizer = optimizer
 
         self.model_agent = model_agent
         self.random_agent = RandomAgent()
@@ -104,6 +103,7 @@ class TrainRun(ABC):
         self.total_selfplay_games = 0
 
     def train(self,
+              optimizer: torch.optim.Optimizer,
               replay_buffer_capacity: int = 100_000,
               initial_experience_samples: int | None = 10_000,
               num_train_iterations: int = 100,
@@ -115,6 +115,7 @@ class TrainRun(ABC):
               max_num_moves: int | None = 200,
               disable_progress: bool = False) -> pd.DataFrame:
 
+        self.optimizer = optimizer
         self.replay_buffer = ReplayBuffer(replay_buffer_capacity)
         self._fill_replay_buffer_random_moves(initial_experience_samples, disable_progress=disable_progress)
 
@@ -170,9 +171,9 @@ class TrainRun(ABC):
 
     @abstractmethod
     def _train_on_experience(self,
-                            num_train_batches: int,
-                            batch_size: int,
-                            disable_progress: bool) -> list[float]:
+                             num_train_batches: int,
+                             batch_size: int,
+                             disable_progress: bool) -> list[float]:
         raise NotImplementedError
 
     def _generate_selfplay_experience(self,
@@ -271,8 +272,8 @@ class TrainRun(ABC):
 
 
 class QModelTrainRun(TrainRun):
-    def __init__(self, model: CheckersQModel, optimizer: torch.optim.Optimizer) -> None:
-        super().__init__(QModelAgent(model), optimizer)
+    def __init__(self, model: CheckersQModel) -> None:
+        super().__init__(QModelAgent(model))
         self.model = model
 
     def _train_on_experience(self, num_train_batches: int, batch_size: int, disable_progress: bool) -> list[float]:
@@ -303,10 +304,9 @@ class QModelTrainRun(TrainRun):
 class VModelTrainRun(TrainRun):
     def __init__(self,
                  model: CheckersVModel,
-                 optimizer: torch.optim.Optimizer,
                  train_search_depth: int = 2,
                  eval_search_depth: int = 3) -> None:
-        super().__init__(VModelAgent(model), optimizer)
+        super().__init__(VModelAgent(model))
         self.model = model
         self.train_search_depth = train_search_depth
         self.eval_search_depth = eval_search_depth
@@ -340,8 +340,8 @@ class VModelTrainRun(TrainRun):
 if __name__ == '__main__':
     model = CheckersVModel(num_hidden_layers=1, hidden_size=1024)
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, weight_decay=1e-5)
-    trainrun = VModelTrainRun(model, optimizer)
-    train_hist = trainrun.train()
+    trainrun = VModelTrainRun(model)
+    train_hist = trainrun.train(optimizer)
     print(train_hist)
 
     wr, dr, lr = trainrun.evaluate_strength(100, 0.05)
