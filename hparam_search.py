@@ -7,6 +7,7 @@ import numpy as np
 from skopt import BayesSearchCV
 from skopt.space import Integer, Real
 from sklearn.base import BaseEstimator, RegressorMixin
+from agent import PieceCountHeuristicsAgent
 
 from train import QModelTrainRun, VModelTrainRun
 from model import CheckersQModel, CheckersVModel
@@ -158,5 +159,10 @@ if __name__ == '__main__':
 
     # Evaluate the model against random moves with the best hyperparameters
     wr, dr, lr = best_hparams_train_run.evaluate_strength()
-    print(f'Final Win Rate: {wr}, Draw Rate: {dr}')
+    print(f'Against random moves: final Win Rate: {wr}, Draw Rate: {dr}')
+
+    wr, dr, lr = best_hparams_train_run.evaluate_strength(enemy_agent=PieceCountHeuristicsAgent(), enemy_agent_kwargs=dict(depth=3))
+    print(f'Against heuristics (depth=3): Win rate {wr}, Draw rate {dr}')
+
+    exit()
 
