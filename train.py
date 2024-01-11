@@ -9,6 +9,7 @@ import tqdm
 import random
 import math
 import pandas as pd
+from matplotlib import pyplot as plt
 
 from model import CheckersQModel, CheckersVModel
 from game import Game, GameState, Player, Action, NUM_ACTIONS
@@ -102,6 +103,7 @@ class TrainRun(ABC):
         self.game = Game()
 
         self.total_selfplay_games = 0
+
 
     def train(self,
               replay_buffer_capacity: int = 10,
@@ -238,7 +240,7 @@ class TrainRun(ABC):
         return train_history
 
     def evaluate_strength(self,
-                          num_evaluation_games: int = 100,
+                          num_evaluation_games: int = 1,
                           evaluation_epsilon: float = 0.05,
                           enemy_agent: BaseAgent | None = None,
                           enemy_agent_kwargs: dict[str, Any] | None = None,
@@ -275,16 +277,20 @@ class TrainRun(ABC):
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
         # Save model
+        # TODO save hyperparameters
         torch.save(self.model, model_path)
         print(f"Model saved at: {model_path}")
     def load_model(self):
         model_path = 'model/model.pth'
         try:
             # Load model
+            # TODO import hyperparameters
             self.model.load_state_dict(torch.load(model_path))
             print(f"Model loaded from: {model_path}")
         except FileNotFoundError:
             print(f"No model found at: {model_path}. Training model from scratch.")
+
+
 
 class QModelTrainRun(TrainRun):
     def __init__(self, model: CheckersQModel, optimizer: torch.optim.Optimizer) -> None:
@@ -352,6 +358,29 @@ class VModelTrainRun(TrainRun):
     def _build_agent_kwargs_eval(self, **kwargs):
         return dict(depth=self.eval_search_depth) | super()._build_agent_kwargs_eval(**kwargs)
 
+def plot(df):
+    fig, ax1 = plt.subplots()
+
+    color = 'tab:red'
+    ax1.set_xlabel('Iteration')
+    ax1.set_ylabel('Loss', color=color)
+    ax1.plot(df['iteration'], df['loss'], color=color)
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    ax2 = ax1.twinx()
+    color = 'tab:blue'
+    ax2.set_ylabel('Epsilon', color=color)
+    ax2.plot(df['iteration'], df['epsilon'], color=color)
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    fig.tight_layout()
+    plt.title('Training History')
+
+    # TODO make smarter
+    plt_save_path = 'plots/training_plot.png'
+    os.makedirs(os.path.dirname(plt_save_path), exist_ok=True)
+    plt.savefig(plt_save_path)
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -361,7 +390,9 @@ if __name__ == '__main__':
     # Shortened training for testing
     train_hist = trainrun.train()
     trainrun.save_model()
+    plot(train_hist)
     print(train_hist)
+
 
     wr, dr, lr = trainrun.evaluate_strength(100, 0.05)
     print(f'win: {wr}, draw: {dr}, loss: {lr}')
