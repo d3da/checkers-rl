@@ -276,16 +276,15 @@ class TrainRun(ABC):
 
         # Save model
         torch.save(self.model, model_path)
-        print(f"Q Model saved at: {model_path}")
+        print(f"Model saved at: {model_path}")
     def load_model(self):
         model_path = 'model/model.pth'
-
         try:
-            # Load Q model
-            self.model_agent.model_q.load_state_dict(torch.load(model_path))
+            # Load model
+            self.model.load_state_dict(torch.load(model_path))
             print(f"Model loaded from: {model_path}")
         except FileNotFoundError:
-            print(f"No Q model found at: {model_path}. Training Q model from scratch.")
+            print(f"No model found at: {model_path}. Training model from scratch.")
 
 class QModelTrainRun(TrainRun):
     def __init__(self, model: CheckersQModel, optimizer: torch.optim.Optimizer) -> None:
