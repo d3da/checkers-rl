@@ -1,5 +1,5 @@
 #!/bin/env python3
-
+import os
 from abc import ABC, abstractmethod
 from collections import Counter, deque
 from typing import NamedTuple, Literal, Any
@@ -104,13 +104,13 @@ class TrainRun(ABC):
         self.total_selfplay_games = 0
 
     def train(self,
-              replay_buffer_capacity: int = 100_000,
-              initial_experience_samples: int | None = 10_000,
-              num_train_iterations: int = 100,
-              selfplay_games_p_i: int = 10,
-              train_batches_p_i: int = 100,
-              batch_size: int = 128,
-              epsilon_anneal_iters: int = 60,
+              replay_buffer_capacity: int = 10,
+              initial_experience_samples: int | None = 5,
+              num_train_iterations: int = 3,
+              selfplay_games_p_i: int = 1,
+              train_batches_p_i: int = 10,
+              batch_size: int = 10,
+              epsilon_anneal_iters: int = 10,
               min_epsilon: float = 0.2,
               max_num_moves: int | None = 200,
               disable_progress: bool = False) -> pd.DataFrame:
@@ -136,6 +136,7 @@ class TrainRun(ABC):
         Games are played by random agents.
         Returns the number of games played.
         """
+
         def is_done():
             if num_samples is None:
                 return self.replay_buffer.is_full
@@ -269,6 +270,22 @@ class TrainRun(ABC):
         lossrate = losses / num_evaluation_games
         return winrate, drawrate, lossrate
 
+    def save_model(self):
+        model_path = 'model/model.pth'
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+
+        # Save model
+        torch.save(self.model, model_path)
+        print(f"Q Model saved at: {model_path}")
+    def load_model(self):
+        model_path = 'model/model.pth'
+
+        try:
+            # Load Q model
+            self.model_agent.model_q.load_state_dict(torch.load(model_path))
+            print(f"Model loaded from: {model_path}")
+        except FileNotFoundError:
+            print(f"No Q model found at: {model_path}. Training Q model from scratch.")
 
 class QModelTrainRun(TrainRun):
     def __init__(self, model: CheckersQModel, optimizer: torch.optim.Optimizer) -> None:
@@ -337,11 +354,14 @@ class VModelTrainRun(TrainRun):
         return dict(depth=self.eval_search_depth) | super()._build_agent_kwargs_eval(**kwargs)
 
 
+
 if __name__ == '__main__':
     model = CheckersVModel(num_hidden_layers=1, hidden_size=1024)
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, weight_decay=1e-5)
     trainrun = VModelTrainRun(model, optimizer)
+    # Shortened training for testing
     train_hist = trainrun.train()
+    trainrun.save_model()
     print(train_hist)
 
     wr, dr, lr = trainrun.evaluate_strength(100, 0.05)
