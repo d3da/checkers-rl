@@ -9,6 +9,7 @@ import tqdm
 import random
 import math
 import pandas as pd
+from matplotlib import pyplot as plt
 
 from model import CheckersQModel, CheckersVModel
 from game import Game, GameState, Player, Action, NUM_ACTIONS
@@ -102,6 +103,7 @@ class TrainRun(ABC):
         self.game = Game()
 
         self.total_selfplay_games = 0
+
 
     def train(self,
               replay_buffer_capacity: int = 100_000,
@@ -238,7 +240,7 @@ class TrainRun(ABC):
         return train_history
 
     def evaluate_strength(self,
-                          num_evaluation_games: int = 100,
+                          num_evaluation_games: int = 1,
                           evaluation_epsilon: float = 0.05,
                           enemy_agent: BaseAgent | None = None,
                           enemy_agent_kwargs: dict[str, Any] | None = None,
@@ -271,20 +273,32 @@ class TrainRun(ABC):
         return winrate, drawrate, lossrate
 
     def save_model(self):
-        model_path = 'model/model.pth'
+
+        model_name = input("Enter name to save model under: \n")
+        model_path = f"model/{model_name}.pth"
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
         # Save model
         torch.save(self.model, model_path)
         print(f"Model saved at: {model_path}")
+
+        # TODO save hyperparameters
+
+
+
+
     def load_model(self):
-        model_path = 'model/model.pth'
+        model_name = input("Enter model name to load (without .pth)")
+        model_path = f"model/{model_name}.pth"
         try:
             # Load model
+            # TODO import hyperparameters
             self.model.load_state_dict(torch.load(model_path))
             print(f"Model loaded from: {model_path}")
         except FileNotFoundError:
             print(f"No model found at: {model_path}. Training model from scratch.")
+
+
 
 class QModelTrainRun(TrainRun):
     def __init__(self, model: CheckersQModel, optimizer: torch.optim.Optimizer) -> None:
@@ -352,6 +366,32 @@ class VModelTrainRun(TrainRun):
     def _build_agent_kwargs_eval(self, **kwargs):
         return dict(depth=self.eval_search_depth) | super()._build_agent_kwargs_eval(**kwargs)
 
+def plot(df):
+    fig, ax1 = plt.subplots()
+
+    color = 'tab:red'
+    ax1.set_xlabel('Iteration')
+    ax1.set_ylabel('Loss', color=color)
+    ax1.plot(df['iteration'], df['loss'], color=color)
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    ax2 = ax1.twinx()
+    color = 'tab:blue'
+    ax2.set_ylabel('Epsilon', color=color)
+    ax2.plot(df['iteration'], df['epsilon'], color=color)
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    plt.title('Training History')
+    plt.tight_layout()
+
+    # request save name
+    plt_name = input("Please enter the name to save the plot under: \n")
+    plt_save_path = f'plots/{plt_name}.png'
+
+    # actual saving + show
+    os.makedirs(os.path.dirname(plt_save_path), exist_ok=True)
+    plt.savefig(plt_save_path)
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -360,8 +400,11 @@ if __name__ == '__main__':
     trainrun = VModelTrainRun(model, optimizer)
     # Shortened training for testing
     train_hist = trainrun.train()
+    plot(train_hist)
     trainrun.save_model()
+
     print(train_hist)
+
 
     wr, dr, lr = trainrun.evaluate_strength(100, 0.05)
     print(f'win: {wr}, draw: {dr}, loss: {lr}')
