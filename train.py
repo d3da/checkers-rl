@@ -108,7 +108,7 @@ class TrainRun(ABC):
     def train(self,
               replay_buffer_capacity: int = 10,
               initial_experience_samples: int | None = 5,
-              num_train_iterations: int = 3,
+              num_train_iterations: int = 5,
               selfplay_games_p_i: int = 1,
               train_batches_p_i: int = 10,
               batch_size: int = 10,
@@ -373,12 +373,12 @@ def plot(df):
     ax2.plot(df['iteration'], df['epsilon'], color=color)
     ax2.tick_params(axis='y', labelcolor=color)
 
-    fig.tight_layout()
     plt.title('Training History')
 
-    # TODO make smarter
+    # TODO adjust naming instead of overwrite
     plt_save_path = 'plots/training_plot.png'
     os.makedirs(os.path.dirname(plt_save_path), exist_ok=True)
+    plt.tight_layout()
     plt.savefig(plt_save_path)
     plt.show()
 
