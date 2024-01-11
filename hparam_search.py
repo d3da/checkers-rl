@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from abc import ABC, abstractmethod
 import os
 import pandas as pd
 import torch
@@ -7,15 +8,15 @@ from skopt import BayesSearchCV
 from skopt.space import Integer, Real
 from sklearn.base import BaseEstimator, RegressorMixin
 
-from train import QModelTrainRun
-from model import CheckersQModel
+from train import QModelTrainRun, VModelTrainRun
+from model import CheckersQModel, CheckersVModel
 
 # np.int is deprecated since numpy 1.20, but skopt still uses it.
 # For some reason they haven't fixed it so this workaround will do for now.
 np.int = np.int64
 
 
-class CheckersQModelWrapper(BaseEstimator, RegressorMixin):
+class ModelWrapper(BaseEstimator, RegressorMixin, ABC):
     def __init__(self, num_hidden_layers=0, hidden_size=0, learning_rate=0.01,
                  self_play_games_per_iter=25, weight_decay=1e-4):
         self.num_hidden_layers = num_hidden_layers
@@ -26,22 +27,22 @@ class CheckersQModelWrapper(BaseEstimator, RegressorMixin):
 
         # Initialize model here
         self.model = None
+        self.optimizer = None
+        self.train_run = None
 
         # Initialize train_hist to an empty list
         self.train_hist = []
 
+    @abstractmethod
+    def _setup(self) -> None:
+        raise NotImplementedError
+
     def fit(self, X, y=None, **kwargs):
         # Update the model's parameters
-        self.model = CheckersQModel(
-            num_hidden_layers=self.num_hidden_layers,
-            hidden_size=self.hidden_size
-        )
-
-        # Set other parameters as needed
-        self.optimzer = torch.optim.SGD(self.model.parameters(),
-                                        lr=self.learning_rate,
-                                        weight_decay=self.weight_decay)
-        self.train_run = QModelTrainRun(self.model, self.optimzer)
+        self._setup()
+        assert self.model
+        assert self.optimizer
+        assert self.train_run
 
         # Train the model and get the metric to optimize (e.g., average win rate)
         self.train_hist = self.train_run.train(selfplay_games_p_i=self.self_play_games_per_iter,
@@ -49,6 +50,7 @@ class CheckersQModelWrapper(BaseEstimator, RegressorMixin):
         return self
 
     def score(self, X, y=None, **kwargs):
+        assert self.train_run
         wr, dr, lr = self.train_run.evaluate_strength(disable_progress=True)
         print(f'winrate: {wr}, draws: {dr}, losses: {lr}')
         return wr
@@ -68,7 +70,39 @@ class CheckersQModelWrapper(BaseEstimator, RegressorMixin):
         return self
 
 
-def optimize_hyperparameters():
+class QModelWrapper(ModelWrapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _setup(self) -> None:
+        self.model = CheckersQModel(
+            num_hidden_layers=self.num_hidden_layers,
+            hidden_size=self.hidden_size
+        )
+        # Set other parameters as needed
+        self.optimizer = torch.optim.SGD(self.model.parameters(),
+                                        lr=self.learning_rate,
+                                        weight_decay=self.weight_decay)
+        self.train_run = QModelTrainRun(self.model, self.optimizer)
+
+
+class VModelWrapper(ModelWrapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _setup(self) -> None:
+        self.model = CheckersVModel(
+            num_hidden_layers=self.num_hidden_layers,
+            hidden_size=self.hidden_size
+        )
+        # Set other parameters as needed
+        self.optimizer = torch.optim.SGD(self.model.parameters(),
+                                        lr=self.learning_rate,
+                                        weight_decay=self.weight_decay)
+        self.train_run = VModelTrainRun(self.model, self.optimizer)
+
+
+def optimize_hyperparameters(wrapper_cls):
     # Define the hyperparameter search space
     search_space = {
         'num_hidden_layers': Integer(0, 3),
@@ -78,7 +112,7 @@ def optimize_hyperparameters():
         'weight_decay': Real(1e-5, 1e-1, 'log-uniform')
     }
 
-    wrapper = CheckersQModelWrapper()
+    wrapper = wrapper_cls()
 
     # Use BayesSearchCV for optimization
     n_jobs = int((os.cpu_count() or 1.5) * 0.75)
@@ -100,7 +134,7 @@ def optimize_hyperparameters():
 
 if __name__ == '__main__':
     # Perform Bayesian optimization to find the best hyperparameters
-    best_hyperparams, results = optimize_hyperparameters()
+    best_hyperparams, results = optimize_hyperparameters(VModelWrapper)
     res_df = pd.DataFrame(results)
 
     print(best_hyperparams)
@@ -109,7 +143,7 @@ if __name__ == '__main__':
     res_df.to_csv('search_results.csv')
 
     # Use the best hyperparameters to train the model
-    best_model = CheckersQModel(
+    best_model = CheckersVModel(
         num_hidden_layers=best_hyperparams['num_hidden_layers'],
         hidden_size=best_hyperparams['hidden_size']
     )
@@ -119,7 +153,7 @@ if __name__ == '__main__':
     best_optimizer = torch.optim.SGD(best_model.parameters(),
                                      lr=best_hyperparams['learning_rate'],
                                      weight_decay=best_hyperparams['weight_decay'])
-    best_hparams_train_run = QModelTrainRun(best_model, best_optimizer)
+    best_hparams_train_run = VModelTrainRun(best_model, best_optimizer)
     train_hist = best_hparams_train_run.train(selfplay_games_p_i=best_hyperparams['self_play_games_per_iter'])
 
     # Evaluate the model against random moves with the best hyperparameters
