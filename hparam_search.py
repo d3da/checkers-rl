@@ -123,7 +123,7 @@ def optimize_hyperparameters(wrapper_cls):
     n_jobs = int((os.cpu_count() or 1.5) * 0.75)
     opt = BayesSearchCV(wrapper,
                         search_space,
-                        n_iter=50,
+                        n_iter=25,
                         random_state=42,
                         verbose=2,
                         cv=5,

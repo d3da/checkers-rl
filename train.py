@@ -106,11 +106,11 @@ class TrainRun(ABC):
     def train(self,
               replay_buffer_capacity: int = 100_000,
               initial_experience_samples: int | None = 10_000,
-              num_train_iterations: int = 100,
+              num_train_iterations: int = 50,
               selfplay_games_p_i: int = 10,
               train_batches_p_i: int = 100,
               batch_size: int = 128,
-              epsilon_anneal_iters: int = 60,
+              epsilon_anneal_iters: int = 40,
               min_epsilon: float = 0.2,
               max_num_moves: int | None = 200,
               disable_progress: bool = False) -> pd.DataFrame:
