@@ -19,11 +19,11 @@ np.int = np.int64
 
 class ModelWrapper(BaseEstimator, RegressorMixin, ABC):
     def __init__(self, num_hidden_layers=0, hidden_size=0, learning_rate=0.01,
-                 self_play_games_per_iter=25, weight_decay=1e-4):
+                 train_batches_p_i=100, weight_decay=1e-4):
         self.num_hidden_layers = num_hidden_layers
         self.hidden_size = hidden_size
         self.learning_rate = learning_rate
-        self.self_play_games_per_iter = self_play_games_per_iter
+        self.train_batches_p_i = train_batches_p_i
         self.weight_decay = weight_decay
 
         # Initialize model here
@@ -46,7 +46,7 @@ class ModelWrapper(BaseEstimator, RegressorMixin, ABC):
         assert self.train_run
 
         # Train the model and get the metric to optimize (e.g., average win rate)
-        self.train_hist = self.train_run.train(selfplay_games_p_i=self.self_play_games_per_iter,
+        self.train_hist = self.train_run.train(train_batches_p_i=self.train_batches_p_i,
                                                disable_progress=True)
         return self
 
@@ -61,7 +61,7 @@ class ModelWrapper(BaseEstimator, RegressorMixin, ABC):
         return {'num_hidden_layers': self.num_hidden_layers,
                 'hidden_size': self.hidden_size,
                 'learning_rate': self.learning_rate,
-                'self_play_games_per_iter': self.self_play_games_per_iter,
+                'train_batches_p_i': self.train_batches_p_i,
                 'weight_decay': self.weight_decay}
 
     def set_params(self, **parameters):
@@ -76,6 +76,8 @@ class QModelWrapper(ModelWrapper):
         super().__init__(*args, **kwargs)
 
     def _setup(self) -> None:
+        assert self.learning_rate
+        assert self.weight_decay
         self.model = CheckersQModel(
             num_hidden_layers=self.num_hidden_layers,
             hidden_size=self.hidden_size
@@ -92,14 +94,16 @@ class VModelWrapper(ModelWrapper):
         super().__init__(*args, **kwargs)
 
     def _setup(self) -> None:
+        assert self.learning_rate
+        assert self.weight_decay
         self.model = CheckersVModel(
             num_hidden_layers=self.num_hidden_layers,
             hidden_size=self.hidden_size
         )
         # Set other parameters as needed
         self.optimizer = torch.optim.SGD(self.model.parameters(),
-                                        lr=self.learning_rate,
-                                        weight_decay=self.weight_decay)
+                                         lr=self.learning_rate,
+                                         weight_decay=self.weight_decay)
         self.train_run = VModelTrainRun(self.model, self.optimizer)
 
 
@@ -107,9 +111,9 @@ def optimize_hyperparameters(wrapper_cls):
     # Define the hyperparameter search space
     search_space = {
         'num_hidden_layers': Integer(0, 3),
-        'hidden_size': Integer(64, 1024),
-        'learning_rate': Real(1e-5, 1e-1, 'log-uniform'),
-        'self_play_games_per_iter': Integer(1, 25),
+        'hidden_size': Integer(512, 2048),
+        'learning_rate': Real(1e-4, 1e-1, 'log-uniform'),
+        'train_batches_p_i': Integer(25, 500),
         'weight_decay': Real(1e-5, 1e-1, 'log-uniform')
     }
 
@@ -155,7 +159,7 @@ if __name__ == '__main__':
                                      lr=best_hyperparams['learning_rate'],
                                      weight_decay=best_hyperparams['weight_decay'])
     best_hparams_train_run = VModelTrainRun(best_model, best_optimizer)
-    train_hist = best_hparams_train_run.train(selfplay_games_p_i=best_hyperparams['self_play_games_per_iter'])
+    train_hist = best_hparams_train_run.train(train_batches_p_i=best_hyperparams['train_batches_p_i'])
 
     # Evaluate the model against random moves with the best hyperparameters
     wr, dr, lr = best_hparams_train_run.evaluate_strength()
