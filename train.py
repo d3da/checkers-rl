@@ -273,15 +273,23 @@ class TrainRun(ABC):
         return winrate, drawrate, lossrate
 
     def save_model(self):
-        model_path = 'model/model.pth'
+
+        model_name = input("Enter name to save model under: \n")
+        model_path = f"model/{model_name}.pth"
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
         # Save model
-        # TODO save hyperparameters
         torch.save(self.model, model_path)
         print(f"Model saved at: {model_path}")
+
+        # TODO save hyperparameters
+
+
+
+
     def load_model(self):
-        model_path = 'model/model.pth'
+        model_name = input("Enter model name to load (without .pth)")
+        model_path = f"model/{model_name}.pth"
         try:
             # Load model
             # TODO import hyperparameters
@@ -374,11 +382,14 @@ def plot(df):
     ax2.tick_params(axis='y', labelcolor=color)
 
     plt.title('Training History')
-
-    # TODO adjust naming instead of overwrite
-    plt_save_path = 'plots/training_plot.png'
-    os.makedirs(os.path.dirname(plt_save_path), exist_ok=True)
     plt.tight_layout()
+
+    # request save name
+    plt_name = input("Please enter the name to save the plot under: \n")
+    plt_save_path = f'plots/{plt_name}.png'
+
+    # actual saving + show
+    os.makedirs(os.path.dirname(plt_save_path), exist_ok=True)
     plt.savefig(plt_save_path)
     plt.show()
 
@@ -389,8 +400,9 @@ if __name__ == '__main__':
     trainrun = VModelTrainRun(model, optimizer)
     # Shortened training for testing
     train_hist = trainrun.train()
-    trainrun.save_model()
     plot(train_hist)
+    trainrun.save_model()
+
     print(train_hist)
 
 
