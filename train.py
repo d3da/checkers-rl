@@ -3,11 +3,12 @@ import os
 from abc import ABC, abstractmethod
 from collections import Counter, deque
 from typing import NamedTuple, Literal, Any
-import torch 
+import torch
 import numpy as np
 import tqdm
 import random
 import math
+import json
 import pandas as pd
 from matplotlib import pyplot as plt
 
@@ -66,6 +67,7 @@ class SmoothedAverage:
 
     Mainly so the progress meters don't jump all over the place, and they are a bit easier to interpret
     """
+
     def __init__(self, alpha: float = 0.25, initial: float | None = None) -> None:
         self._ema: float | None = initial
         self._last_value: float | None = initial
@@ -104,7 +106,6 @@ class TrainRun(ABC):
 
         self.total_selfplay_games = 0
 
-
     def train(self,
               replay_buffer_capacity: int = 100_000,
               initial_experience_samples: int | None = 10_000,
@@ -119,7 +120,7 @@ class TrainRun(ABC):
 
         self.replay_buffer = ReplayBuffer(replay_buffer_capacity)
         self._fill_replay_buffer_random_moves(initial_experience_samples, disable_progress=disable_progress)
-
+        self.train_batches_p_i = train_batches_p_i
         train_history = self._train_loop(num_train_iterations,
                                          selfplay_games_p_i, train_batches_p_i,
                                          batch_size,
@@ -168,14 +169,14 @@ class TrainRun(ABC):
             winners.append(sample.winner.value)
 
         return torch.tensor(np.array(states, dtype=np.float32)), \
-                torch.tensor(np.array(actions, dtype=np.int64)), \
-                torch.tensor(np.array(winners, dtype=np.float32))
+            torch.tensor(np.array(actions, dtype=np.int64)), \
+            torch.tensor(np.array(winners, dtype=np.float32))
 
     @abstractmethod
     def _train_on_experience(self,
-                            num_train_batches: int,
-                            batch_size: int,
-                            disable_progress: bool) -> list[float]:
+                             num_train_batches: int,
+                             batch_size: int,
+                             disable_progress: bool) -> list[float]:
         raise NotImplementedError
 
     def _generate_selfplay_experience(self,
@@ -272,20 +273,13 @@ class TrainRun(ABC):
         lossrate = losses / num_evaluation_games
         return winrate, drawrate, lossrate
 
-    def save_model(self):
-
-        model_name = input("Enter name to save model under: \n")
-        model_path = f"model/{model_name}.pth"
+    def save_model(self, name):
+        model_path = f"model/{name}.pth"
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
         # Save model
         torch.save(self.model, model_path)
         print(f"Model saved at: {model_path}")
-
-        # TODO save hyperparameters
-
-
-
 
     def load_model(self):
         model_name = input("Enter model name to load (without .pth)")
@@ -297,7 +291,6 @@ class TrainRun(ABC):
             print(f"Model loaded from: {model_path}")
         except FileNotFoundError:
             print(f"No model found at: {model_path}. Training model from scratch.")
-
 
 
 class QModelTrainRun(TrainRun):
@@ -327,7 +320,6 @@ class QModelTrainRun(TrainRun):
             losses.append(loss.item())
 
         return losses
-
 
 
 class VModelTrainRun(TrainRun):
@@ -366,7 +358,8 @@ class VModelTrainRun(TrainRun):
     def _build_agent_kwargs_eval(self, **kwargs):
         return dict(depth=self.eval_search_depth) | super()._build_agent_kwargs_eval(**kwargs)
 
-def plot(df):
+
+def plot(df, name):
     fig, ax1 = plt.subplots()
 
     color = 'tab:red'
@@ -385,8 +378,7 @@ def plot(df):
     plt.tight_layout()
 
     # request save name
-    plt_name = input("Please enter the name to save the plot under: \n")
-    plt_save_path = f'plots/{plt_name}.png'
+    plt_save_path = f'plots/training_plot_{name}.png'
 
     # actual saving + show
     os.makedirs(os.path.dirname(plt_save_path), exist_ok=True)
@@ -394,18 +386,71 @@ def plot(df):
     plt.show()
 
 
+def save_hyper_params(name):
+    # Create a folder to save hyperparameters if it doesn't exist
+    folder_name = 'hyperparameters_folder'
+    if not os.path.exists(folder_name):
+        os.makedirs(folder_name)
+
+    # Save hyperparameters to a JSON file in the folder
+    file_path = os.path.join(folder_name, f'{name}.json')
+    with open(file_path, 'w') as f:
+        json.dump(hyperparameters, f, indent=4)
+
+def load_model_with_hyperparameters(model_class, optimizer_class, train_run_class, hyper_name):
+    # Specify path
+    hyperparameters_file = f'hyperparameters_folder/{hyper_name}.json'
+
+    # Load hyperparameters from the JSON file
+    with open(hyperparameters_file, 'r') as f:
+        hyperparameters = json.load(f)
+
+    # Initialize the model with hyperparameters
+    model = model_class(num_hidden_layers=hyperparameters['num_hidden_layers'], hidden_size=hyperparameters['hidden_size'])
+    optimizer = optimizer_class(model.parameters(), lr=hyperparameters['learning_rate'], weight_decay=hyperparameters['weight_decay'])
+    trainrun = train_run_class(model, optimizer)
+
+    return model, optimizer, trainrun
+
 if __name__ == '__main__':
-    model = CheckersVModel(num_hidden_layers=1, hidden_size=1024)
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    # Define hyperparameters
+    hyperparameters = {
+        'num_hidden_layers': 1,
+        'hidden_size': 1024,
+        'learning_rate': 1e-3,
+        'weight_decay': 1e-5,
+        'train_batches_p_i': 0
+    }
+
+    # Set save name to load/save
+    # save_name = input("Please enter the name to save the model, hyperparameters and plot under: \n")
+    save_name = "model_2"
+
+    # Load the model with hyperparameters
+    # model, optimizer, trainrun = load_model_with_hyperparameters(CheckersVModel, torch.optim.SGD, VModelTrainRun, save_name)
+
+    # From scratch, build model with given hyperparameters
+    model = CheckersVModel(num_hidden_layers=hyperparameters['num_hidden_layers'],
+                           hidden_size=hyperparameters['hidden_size'])
+    optimizer = torch.optim.SGD(model.parameters(), lr=hyperparameters['learning_rate'],
+                                weight_decay=hyperparameters['weight_decay'])
     trainrun = VModelTrainRun(model, optimizer)
+
+    # Include training batch per iter
+    trainrun.train_batches_p_i = hyperparameters['train_batches_p_i']
+
+
     # Shortened training for testing
     train_hist = trainrun.train()
-    plot(train_hist)
-    trainrun.save_model()
+    plot(train_hist, save_name)
+
+    # Save hyperparameters and model
+    hyperparameters['train_batches_p_i'] = trainrun.train_batches_p_i
+    print(hyperparameters)
+    save_hyper_params(save_name)
+    trainrun.save_model(save_name)
 
     print(train_hist)
 
-
     wr, dr, lr = trainrun.evaluate_strength(100, 0.05)
     print(f'win: {wr}, draw: {dr}, loss: {lr}')
-
