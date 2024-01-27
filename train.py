@@ -391,11 +391,26 @@ def save_hyper_params(name):
     folder_name = 'hyperparameters_folder'
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
+
     # Save hyperparameters to a JSON file in the folder
     file_path = os.path.join(folder_name, f'{name}.json')
     with open(file_path, 'w') as f:
         json.dump(hyperparameters, f, indent=4)
 
+def load_model_with_hyperparameters(model_class, optimizer_class, train_run_class, hyper_name):
+    # Specify path
+    hyperparameters_file = f'hyperparameters_folder/{hyper_name}.json'
+
+    # Load hyperparameters from the JSON file
+    with open(hyperparameters_file, 'r') as f:
+        hyperparameters = json.load(f)
+
+    # Initialize the model with hyperparameters
+    model = model_class(num_hidden_layers=hyperparameters['num_hidden_layers'], hidden_size=hyperparameters['hidden_size'])
+    optimizer = optimizer_class(model.parameters(), lr=hyperparameters['learning_rate'], weight_decay=hyperparameters['weight_decay'])
+    trainrun = train_run_class(model, optimizer)
+
+    return model, optimizer, trainrun
 
 if __name__ == '__main__':
     # Define hyperparameters
@@ -406,9 +421,14 @@ if __name__ == '__main__':
         'weight_decay': 1e-5
     }
 
-    save_name = input("Please enter the name to save the model, hyperparameters and plot under: \n")
+    # Name to save file under, request or set
+    #save_name = input("Please enter the name to save the model, hyperparameters and plot under: \n")
+    save_name = "model_2"
 
-    # Build model with given hyperparameters
+    # Load the model with hyperparameters
+    # model, optimizer, trainrun = load_model_with_hyperparameters(CheckersVModel, torch.optim.SGD, VModelTrainRun, save_name)
+
+    # From scratch, build model with given hyperparameters
     model = CheckersVModel(num_hidden_layers=hyperparameters['num_hidden_layers'],
                            hidden_size=hyperparameters['hidden_size'])
     optimizer = torch.optim.SGD(model.parameters(), lr=hyperparameters['learning_rate'],
@@ -419,6 +439,7 @@ if __name__ == '__main__':
     train_hist = trainrun.train()
     plot(train_hist, save_name)
 
+    # Save hyperparameters and model
     save_hyper_params(save_name)
     trainrun.save_model(save_name)
 
