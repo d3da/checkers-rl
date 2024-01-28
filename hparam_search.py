@@ -52,7 +52,9 @@ class ModelWrapper(BaseEstimator, RegressorMixin, ABC):
 
     def score(self, X, y=None, **kwargs):
         assert self.train_run
-        wr, dr, lr = self.train_run.evaluate_strength(disable_progress=True)
+        wr, dr, lr = self.train_run.evaluate_strength(disable_progress=True,
+                                                      enemy_agent=PieceCountHeuristicsAgent(),
+                                                      enemy_agent_kwargs=dict(depth=2))
         print(f'winrate: {wr}, draws: {dr}, losses: {lr}')
         return wr
 
