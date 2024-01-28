@@ -128,7 +128,7 @@ def optimize_hyperparameters(wrapper_cls):
                         n_iter=25,
                         random_state=42,
                         verbose=2,
-                        cv=5,
+                        cv=3,
                         n_jobs=n_jobs,
                         n_points=8)
 
