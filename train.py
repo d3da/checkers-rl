@@ -111,7 +111,7 @@ class TrainRun(ABC):
               initial_experience_samples: int | None = 5,
               num_train_iterations: int = 5,
               selfplay_games_p_i: int = 1,
-              train_batches_p_i: int = 10,
+              train_batches_p_i: int = 5,
               batch_size: int = 10,
               epsilon_anneal_iters: int = 10,
               min_epsilon: float = 0.2,
@@ -120,7 +120,7 @@ class TrainRun(ABC):
 
         self.replay_buffer = ReplayBuffer(replay_buffer_capacity)
         self._fill_replay_buffer_random_moves(initial_experience_samples, disable_progress=disable_progress)
-
+        self.train_batches_p_i = train_batches_p_i
         train_history = self._train_loop(num_train_iterations,
                                          selfplay_games_p_i, train_batches_p_i,
                                          batch_size,
@@ -418,11 +418,12 @@ if __name__ == '__main__':
         'num_hidden_layers': 1,
         'hidden_size': 1024,
         'learning_rate': 1e-3,
-        'weight_decay': 1e-5
+        'weight_decay': 1e-5,
+        'train_batches_p_i': 0
     }
 
-    # Name to save file under, request or set
-    #save_name = input("Please enter the name to save the model, hyperparameters and plot under: \n")
+    # Set save name to load/save
+    # save_name = input("Please enter the name to save the model, hyperparameters and plot under: \n")
     save_name = "model_2"
 
     # Load the model with hyperparameters
@@ -435,11 +436,14 @@ if __name__ == '__main__':
                                 weight_decay=hyperparameters['weight_decay'])
     trainrun = VModelTrainRun(model, optimizer)
 
+
     # Shortened training for testing
     train_hist = trainrun.train()
     plot(train_hist, save_name)
 
     # Save hyperparameters and model
+    hyperparameters['train_batches_p_i'] = trainrun.train_batches_p_i
+    print(hyperparameters)
     save_hyper_params(save_name)
     trainrun.save_model(save_name)
 
