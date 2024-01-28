@@ -436,6 +436,9 @@ if __name__ == '__main__':
                                 weight_decay=hyperparameters['weight_decay'])
     trainrun = VModelTrainRun(model, optimizer)
 
+    # Include training batch per iter
+    trainrun.train_batches_p_i = hyperparameters['train_batches_p_i']
+
 
     # Shortened training for testing
     train_hist = trainrun.train()
