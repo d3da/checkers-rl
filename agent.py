@@ -293,6 +293,19 @@ class VModelAgent(BaseEpsilonMinMaxAgent):
         return self.model(torch.tensor(game.get_state().to_array(), dtype=torch.float32))
 
 
+class VModelEnsembleAgent(BaseEpsilonMinMaxAgent):
+    def __init__(self, *models: CheckersVModel):
+        super().__init__()
+        self.models = models
+
+    @torch.no_grad()
+    def _heuristic(self, game: Game) -> float:
+        gamestate_tensor = torch.tensor(game.get_state().to_array(), dtype=torch.float32)
+
+        values = [m(gamestate_tensor) for m in self.models]
+        return float(np.average(values))
+
+
 def play_agent_game(game: Game,
                     agent_a: BaseAgent,
                     agent_b: BaseAgent,
