@@ -415,16 +415,16 @@ def load_model_with_hyperparameters(model_class, optimizer_class, train_run_clas
 if __name__ == '__main__':
     # Define hyperparameters
     hyperparameters = {
-        'num_hidden_layers': 1,
-        'hidden_size': 1024,
-        'learning_rate': 1e-3,
+        'num_hidden_layers': 2,
+        'hidden_size': 1809,
+        'learning_rate': 0.003,
         'weight_decay': 1e-5,
-        'train_batches_p_i': 0
+        'train_batches_p_i': 54,
     }
 
     # Set save name to load/save
     # save_name = input("Please enter the name to save the model, hyperparameters and plot under: \n")
-    save_name = "model_2"
+    save_name = "model_1"
 
     # Load the model with hyperparameters
     # model, optimizer, trainrun = load_model_with_hyperparameters(CheckersVModel, torch.optim.SGD, VModelTrainRun, save_name)
