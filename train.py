@@ -241,7 +241,7 @@ class TrainRun(ABC):
         return train_history
 
     def evaluate_strength(self,
-                          num_evaluation_games: int = 1,
+                          num_evaluation_games: int = 100,
                           evaluation_epsilon: float = 0.05,
                           enemy_agent: BaseAgent | None = None,
                           enemy_agent_kwargs: dict[str, Any] | None = None,

@@ -168,7 +168,7 @@ if __name__ == '__main__':
     print(f'Against random moves: final Win Rate: {wr}, Draw Rate: {dr}')
 
     wr, dr, lr = best_hparams_train_run.evaluate_strength(enemy_agent=PieceCountHeuristicsAgent(), enemy_agent_kwargs=dict(depth=2))
-    print(f'Against heuristics (depth=3): Win rate {wr}, Draw rate {dr}')
+    print(f'Against heuristics (depth=2): Win rate {wr}, Draw rate {dr}')
 
     exit()
 
