@@ -281,13 +281,12 @@ class TrainRun(ABC):
         torch.save(self.model, model_path)
         print(f"Model saved at: {model_path}")
 
-    def load_model(self):
-        model_name = input("Enter model name to load (without .pth)")
+    def load_model(self, model_name: str | None = None):
+        model_name = model_name or input("Enter model name to load (without .pth)")
         model_path = f"model/{model_name}.pth"
         try:
             # Load model
-            # TODO import hyperparameters
-            self.model.load_state_dict(torch.load(model_path))
+            self.model = torch.load(model_path)
             print(f"Model loaded from: {model_path}")
         except FileNotFoundError:
             print(f"No model found at: {model_path}. Training model from scratch.")
